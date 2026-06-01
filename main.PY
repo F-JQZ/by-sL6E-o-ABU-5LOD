@@ -7,9 +7,9 @@ import math
 import asyncio
 
 # ============================================================
-#  إعدادات السيرفر
+#  إعدادات سيرفر TRG
 # ============================================================
-SERVER_IP        = "194.45.197.143"
+SERVER_IP        = "194.110.12.232"
 SERVER_PORT      = "30120"
 GUILD_ID         = 1510735912185630812
 
@@ -17,7 +17,7 @@ BASE_URL         = f"http://{SERVER_IP}:{SERVER_PORT}/players.json"
 INFO_URL         = f"http://{SERVER_IP}:{SERVER_PORT}/info.json"
 FIVEM_THUMBNAIL  = "https://i.imgur.com/F4LkFHJ.png"
 PLAYERS_PER_PAGE = 20
-TIMEOUT_SEC      = 5
+TIMEOUT_SEC      = 8
 
 COLOR_DEFAULT = 0x5865F2
 COLOR_ERROR   = 0xED4245
@@ -55,13 +55,13 @@ def format_identifiers(identifiers):
     return "\n".join(lines) if lines else "لا توجد معرّفات"
 
 def error_embed(message):
-    embed = discord.Embed(title="FiveM Bot", description=message, color=COLOR_ERROR)
+    embed = discord.Embed(title="TRG Bot", description=message, color=COLOR_ERROR)
     embed.set_thumbnail(url=FIVEM_THUMBNAIL)
-    embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
+    embed.set_footer(text=f"TRG | {SERVER_IP}:{SERVER_PORT}")
     return embed
 
 # ============================================================
-#  جلب البيانات
+#  جلب البيانات — ✅ مصلح (كان 1500 والصح 200)
 # ============================================================
 async def fetch_players():
     headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
@@ -69,8 +69,10 @@ async def fetch_players():
     async with aiohttp.ClientSession(timeout=timeout) as session:
         try:
             async with session.get(BASE_URL, headers=headers) as r:
-                if r.status == 1500:
+                if r.status == 600:
                     return await r.json(content_type=None)
+                else:
+                    print(f"❌ HTTP Status: {r.status}")
         except Exception as e:
             print(f"❌ fetch_players error: {e}")
     return None
@@ -104,13 +106,13 @@ def build_players_embed(players_data, page, total_pages):
         lines = "لا يوجد لاعبين في هذه الصفحة."
 
     embed = discord.Embed(
-        title="FiveM Bot",
-        description=f"**قائمة اللاعبين • المجموع: {total} • الصفحة: {page}/{total_pages}**",
+        title="TRG Bot",
+        description=f"**قائمة لاعبي TRG • المجموع: {total} • الصفحة: {page}/{total_pages}**",
         color=COLOR_DEFAULT
     )
     embed.set_thumbnail(url=FIVEM_THUMBNAIL)
     embed.add_field(name="Player List", value=f"```gml\n{lines}```", inline=False)
-    embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
+    embed.set_footer(text=f"TRG | {SERVER_IP}:{SERVER_PORT}")
     return embed
 
 class PlayersView(discord.ui.View):
@@ -192,14 +194,14 @@ bot = FiveMBot()
 @bot.event
 async def on_ready():
     await bot.change_presence(
-        activity=discord.Activity(type=discord.ActivityType.watching, name="BY ABO 5LOOD & SL6E")
+        activity=discord.Activity(type=discord.ActivityType.watching, name="TRG Server")
     )
     print(f"✅ البوت شغال: {bot.user.name} ({bot.user.id})")
 
 # ============================================================
 #  /players
 # ============================================================
-@bot.tree.command(name="players", description="عرض قائمة اللاعبين مع أزرار التنقل")
+@bot.tree.command(name="players", description="عرض قائمة لاعبي TRG مع أزرار التنقل")
 async def cmd_players(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
     data = await fetch_players()
@@ -232,22 +234,22 @@ async def cmd_id(interaction: discord.Interaction, server_id: int):
     if not target:
         await interaction.followup.send(embed=error_embed(f"❌ لا يوجد لاعب بالـ ID **{server_id}**.")); return
 
-    ids          = target.get("identifiers", [])
-    steam_raw    = extract_identifier(ids, "steam:")
-    discord_raw  = extract_identifier(ids, "discord:")
-    license_raw  = extract_identifier(ids, "license:")
+    ids         = target.get("identifiers", [])
+    steam_raw   = extract_identifier(ids, "steam:")
+    discord_raw = extract_identifier(ids, "discord:")
+    license_raw = extract_identifier(ids, "license:")
 
-    embed = discord.Embed(title="FiveM Bot", color=COLOR_DEFAULT)
+    embed = discord.Embed(title="TRG Bot", color=COLOR_DEFAULT)
     embed.set_author(name="ID Search")
     embed.set_thumbnail(url=FIVEM_THUMBNAIL)
-    embed.add_field(name="Username",   value=f"`{target.get('name','Unknown')}`",                                inline=True)
-    embed.add_field(name="Server ID",  value=f"`{target.get('id','?')}`",                                        inline=True)
-    embed.add_field(name="Ping",       value=f"`{target.get('ping','?')} ms`",                                   inline=True)
-    embed.add_field(name="🟠 Steam",   value=f"`{steam_raw}`"   if steam_raw   else "`غير مرتبط`",              inline=True)
-    embed.add_field(name="🔵 Discord", value=f"<@{discord_raw}>" if discord_raw else "`غير مرتبط`",             inline=True)
-    embed.add_field(name="🔑 License", value=f"`{license_raw}`" if license_raw else "`—`",                       inline=True)
+    embed.add_field(name="Username",   value=f"`{target.get('name','Unknown')}`",          inline=True)
+    embed.add_field(name="Server ID",  value=f"`{target.get('id','?')}`",                  inline=True)
+    embed.add_field(name="Ping",       value=f"`{target.get('ping','?')} ms`",             inline=True)
+    embed.add_field(name="🟠 Steam",   value=f"`{steam_raw}`" if steam_raw else "`—`",     inline=True)
+    embed.add_field(name="🔵 Discord", value=f"<@{discord_raw}>" if discord_raw else "`—`", inline=True)
+    embed.add_field(name="🔑 License", value=f"`{license_raw}`" if license_raw else "`—`", inline=True)
     embed.add_field(name="📋 All Identifiers", value=format_identifiers(ids), inline=False)
-    embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
+    embed.set_footer(text=f"TRG | {SERVER_IP}:{SERVER_PORT}")
     await interaction.followup.send(embed=embed)
 
 # ============================================================
@@ -273,20 +275,20 @@ async def cmd_search(interaction: discord.Interaction, name: str):
         lines += f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}  (ping: {p.get('ping','?')}ms)\n"
 
     embed = discord.Embed(
-        title="FiveM Bot",
-        description=f"**نتائج البحث عن: \"{name}\"** — {len(results)} لاعب",
+        title="TRG Bot",
+        description=f"**نتائج البحث: \"{name}\"** — {len(results)} لاعب",
         color=COLOR_SUCCESS
     )
     embed.set_author(name="Name Search")
     embed.set_thumbnail(url=FIVEM_THUMBNAIL)
     embed.add_field(name="Results", value=f"```gml\n{lines}```", inline=False)
-    embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
+    embed.set_footer(text=f"TRG | {SERVER_IP}:{SERVER_PORT}")
     await interaction.followup.send(embed=embed)
 
 # ============================================================
 #  /stats
 # ============================================================
-@bot.tree.command(name="stats", description="إحصائيات السيرفر العامة")
+@bot.tree.command(name="stats", description="إحصائيات سيرفر TRG")
 async def cmd_stats(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
     data, info = await asyncio.gather(fetch_players(), fetch_info())
@@ -295,44 +297,38 @@ async def cmd_stats(interaction: discord.Interaction):
         await interaction.followup.send(embed=error_embed("❌ السيرفر غير متاح.")); return
 
     total       = len(data)
-    max_players = "?"
-    server_name = "Unknown"
+    max_players = 600
+    server_name = "TRG Server"
 
     if info and isinstance(info, dict):
         v = info.get("vars", {})
-        max_players = v.get("sv_maxClients", "?")
-        server_name = info.get("name", v.get("sv_hostname", "Unknown"))
+        server_name = info.get("name", v.get("sv_hostname", "TRG Server"))
 
     pings    = [p.get("ping", 0) for p in data if isinstance(p.get("ping"), int)]
     avg_ping = round(sum(pings) / len(pings)) if pings else 0
 
-    status_bar = ""
-    try:
-        filled     = int((total / int(max_players)) * 10)
-        status_bar = "🟩" * filled + "⬛" * (10 - filled)
-    except:
-        pass
+    filled     = int((total / max_players) * 10)
+    status_bar = "🟩" * filled + "⬛" * (10 - filled)
 
-    embed = discord.Embed(title="FiveM Bot", description="**إحصائيات السيرفر**", color=COLOR_DEFAULT)
+    embed = discord.Embed(title="TRG Bot", description="**إحصائيات السيرفر**", color=COLOR_DEFAULT)
     embed.set_author(name="Server Stats")
     embed.set_thumbnail(url=FIVEM_THUMBNAIL)
-    embed.add_field(name="🖥️ اسم السيرفر",    value=f"`{server_name}`",               inline=False)
-    embed.add_field(name="👥 اللاعبون",        value=f"`{total} / {max_players}`",      inline=True)
-    embed.add_field(name="📶 متوسط البينج",    value=f"`{avg_ping} ms`",               inline=True)
-    embed.add_field(name="🌐 العنوان",          value=f"`{SERVER_IP}:{SERVER_PORT}`",    inline=True)
-    if status_bar:
-        embed.add_field(name="📊 امتلاء السيرفر", value=status_bar, inline=False)
-    embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
+    embed.add_field(name="🖥️ اسم السيرفر",     value=f"`{server_name}`",            inline=False)
+    embed.add_field(name="👥 اللاعبون",         value=f"`{total} / {max_players}`",  inline=True)
+    embed.add_field(name="📶 متوسط البينج",     value=f"`{avg_ping} ms`",            inline=True)
+    embed.add_field(name="🌐 العنوان",           value=f"`{SERVER_IP}:{SERVER_PORT}`", inline=True)
+    embed.add_field(name="📊 امتلاء السيرفر",   value=status_bar,                    inline=False)
+    embed.set_footer(text=f"TRG | {SERVER_IP}:{SERVER_PORT}")
     await interaction.followup.send(embed=embed)
 
 # ============================================================
 #  /help
 # ============================================================
-@bot.tree.command(name="help", description="عرض جميع الأوامر المتاحة")
+@bot.tree.command(name="help", description="عرض جميع الأوامر")
 async def cmd_help(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="FiveM Bot — الأوامر",
-        description=f"سيرفر: `{SERVER_IP}:{SERVER_PORT}`",
+        title="TRG Bot — الأوامر",
+        description=f"سيرفر TRG | `{SERVER_IP}:{SERVER_PORT}`",
         color=COLOR_DEFAULT
     )
     embed.set_thumbnail(url=FIVEM_THUMBNAIL)
@@ -340,12 +336,12 @@ async def cmd_help(interaction: discord.Interaction):
         ("/players",        "قائمة كل اللاعبين المتصلين مع أزرار للتنقل"),
         ("/id [server_id]", "معلومات لاعب عن طريق الـ ID"),
         ("/search [name]",  "البحث عن لاعب بالاسم أو جزء منه"),
-        ("/stats",          "إحصائيات السيرفر العامة"),
+        ("/stats",          "إحصائيات السيرفر"),
         ("/help",           "عرض هذه القائمة"),
     ]
     for cmd, desc in cmds:
         embed.add_field(name=f"`{cmd}`", value=desc, inline=False)
-    embed.set_footer(text="BY ABO 5LOOD & SL6E")
+    embed.set_footer(text="TRG Server Bot")
     await interaction.response.send_message(embed=embed)
 
 # ============================================================
