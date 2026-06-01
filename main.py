@@ -7,7 +7,7 @@ import math
 import asyncio
 import ssl
 
-SERVER_IP   = "194.45.197.196"
+SERVER_IP   = "194.110.12.232"
 SERVER_PORT = "30120"
 GUILD_ID    = 1510735912185630812
 
