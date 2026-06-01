@@ -17,7 +17,7 @@ GUILD_ID    = 1510735912185630812
 BASE_URL = f"http://{SERVER_IP}:{SERVER_PORT}/players.json"
 INFO_URL = f"http://{SERVER_IP}:{SERVER_PORT}/info.json"
 
-FIVEM_THUMBNAIL  = "https://cdn.discordapp.com/emojis/1060951257456812082.png"
+FIVEM_THUMBNAIL   = "https://cdn.discordapp.com/emojis/1060951257456812082.png"
 PLAYERS_PER_FIELD = 25
 TIMEOUT_SEC       = 10
 
@@ -120,7 +120,10 @@ def build_full_players_embed(players_data: list) -> list[discord.Embed]:
             embed = discord.Embed(color=COLOR_DEFAULT)
 
         for chunk in group:
-            lines = "".join(f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}\n" for p in chunk)
+            lines = "".join(
+                f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}\n"
+                for p in chunk
+            )
             start_id = chunk[0].get('id', '?')
             end_id   = chunk[-1].get('id', '?')
             embed.add_field(
@@ -172,7 +175,7 @@ async def on_ready():
     print(f"✅ البوت شغال: {bot.user.name}  |  {SERVER_IP}:{SERVER_PORT}")
 
 # ============================================================
-#  /playerstrg — قائمة كاملة لجميع اللاعبين
+#  /playerstrg
 # ============================================================
 @bot.tree.command(name="playerstrg", description="عرض قائمة كاملة لجميع اللاعبين المتصلين")
 async def cmd_players(interaction: discord.Interaction):
@@ -198,7 +201,7 @@ async def cmd_players(interaction: discord.Interaction):
     await interaction.followup.send(embeds=embeds[:10])
 
 # ============================================================
-#  /idtrg — البحث عن لاعب بالـ ID
+#  /idtrg
 # ============================================================
 @bot.tree.command(name="idtrg", description="البحث عن لاعب داخل السيرفر عبر الـ Server ID")
 @app_commands.describe(server_id="الـ ID الخاص باللاعب داخل السيرفر")
@@ -222,10 +225,10 @@ async def cmd_id(interaction: discord.Interaction, server_id: int):
         ))
         return
 
-    identifiers  = target.get("identifiers", [])
-    steam_raw    = extract_identifier(identifiers, "steam:")
-    discord_raw  = extract_identifier(identifiers, "discord:")
-    license_raw  = extract_identifier(identifiers, "license:")
+    identifiers   = target.get("identifiers", [])
+    steam_raw     = extract_identifier(identifiers, "steam:")
+    discord_raw   = extract_identifier(identifiers, "discord:")
+    license_raw   = extract_identifier(identifiers, "license:")
     steam_value   = f"`{steam_raw}`"                        if steam_raw   else "`غير مرتبط`"
     discord_value = f"<@{discord_raw}> (`{discord_raw}`)"  if discord_raw else "`غير مرتبط`"
     license_value = f"`{license_raw}`"                      if license_raw else "`—`"
@@ -236,18 +239,18 @@ async def cmd_id(interaction: discord.Interaction, server_id: int):
         color=COLOR_DEFAULT
     )
     embed.set_author(name="ID Search")
-    embed.add_field(name="Username",          value=f"`{target.get('name','Unknown')}`", inline=True)
-    embed.add_field(name="Server ID",         value=f"`{target.get('id','?')}`",         inline=True)
-    embed.add_field(name="Ping",              value=f"`{target.get('ping','?')} ms`",    inline=True)
-    embed.add_field(name="🟠 Steam",          value=steam_value,                          inline=True)
-    embed.add_field(name="🔵 Discord",        value=discord_value,                        inline=True)
-    embed.add_field(name="🔑 License",        value=license_value,                        inline=True)
-    embed.add_field(name="📋 All Identifiers",value=format_identifiers(identifiers),      inline=False)
+    embed.add_field(name="Username",           value=f"`{target.get('name','Unknown')}`", inline=True)
+    embed.add_field(name="Server ID",          value=f"`{target.get('id','?')}`",         inline=True)
+    embed.add_field(name="Ping",               value=f"`{target.get('ping','?')} ms`",    inline=True)
+    embed.add_field(name="🟠 Steam",           value=steam_value,                          inline=True)
+    embed.add_field(name="🔵 Discord",         value=discord_value,                        inline=True)
+    embed.add_field(name="🔑 License",         value=license_value,                        inline=True)
+    embed.add_field(name="📋 All Identifiers", value=format_identifiers(identifiers),      inline=False)
     embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
     await interaction.followup.send(embed=embed)
 
 # ============================================================
-#  /searchtrg — البحث عن لاعب بالاسم
+#  /searchtrg
 # ============================================================
 @bot.tree.command(name="searchtrg", description="البحث عن لاعب بالاسم")
 @app_commands.describe(name="اسم اللاعب أو جزء منه")
@@ -265,7 +268,9 @@ async def cmd_search(interaction: discord.Interaction, name: str):
 
     results = [p for p in players_data if name.strip().lower() in p.get("name", "").lower()]
     if not results:
-        await interaction.followup.send(embed=error_embed(f"❌ لم يُعثر على لاعب يحتوي اسمه على **\"{name}\"**."))
+        await interaction.followup.send(embed=error_embed(
+            f"❌ لم يُعثر على لاعب يحتوي اسمه على **\"{name}\"**."
+        ))
         return
 
     truncated = len(results) > 20
@@ -278,14 +283,45 @@ async def cmd_search(interaction: discord.Interaction, name: str):
 
     embed = discord.Embed(
         title="FiveM Bot",
-        description=f"**نتائج البحث عن:** `{name}`{note}",
-        color=COLOR_DEFAULT
+        description=f"**نتائج البحث عن: \"{name}\"** — {len(results)} نتيجة{note}",
+        color=COLOR_SUCCESS
     )
-    embed.add_field(name=f"النتائج ({len(results)})", value=f"```gml\n{lines}```", inline=False)
+    embed.set_author(name="Name Search")
+    embed.add_field(name="Results", value=f"```gml\n{lines}```", inline=False)
     embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
     await interaction.followup.send(embed=embed)
 
 # ============================================================
-#  تشغيل البوت
+#  /statstrg
 # ============================================================
-bot.run(os.getenv("DISCORD_TOKEN"))
+@bot.tree.command(name="statstrg", description="إحصائيات السيرفر العامة")
+async def cmd_stats(interaction: discord.Interaction):
+    await interaction.response.defer(thinking=True)
+
+    players_data, info_data = await asyncio.gather(fetch_players(), fetch_info())
+    if players_data is None:
+        await interaction.followup.send(embed=error_embed("❌ السيرفر غير متاح حالياً."))
+        return
+
+    total_players = len(players_data)
+    max_players   = info_data.get("vars", {}).get("sv_maxClients", "?") if info_data else "?"
+    hostname      = info_data.get("vars", {}).get("sv_hostname", "Unknown") if info_data else "Unknown"
+    server_name   = info_data.get("name", hostname) if info_data else hostname
+    pings         = [p.get("ping", 0) for p in players_data if isinstance(p.get("ping"), int)]
+    avg_ping      = round(sum(pings) / len(pings)) if pings else 0
+
+    embed = discord.Embed(title="FiveM Bot", description="**Server Statistics**", color=COLOR_DEFAULT)
+    embed.set_author(name="Server Stats")
+    embed.add_field(name="🖥️ Server Name", value=f"`{server_name}`",                  inline=False)
+    embed.add_field(name="👥 Players",     value=f"`{total_players} / {max_players}`", inline=True)
+    embed.add_field(name="📶 Avg Ping",    value=f"`{avg_ping} ms`",                   inline=True)
+    embed.add_field(name="🌐 Address",     value=f"`{SERVER_IP}:{SERVER_PORT}`",        inline=True)
+    embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
+    await interaction.followup.send(embed=embed)
+
+# ============================================================
+TOKEN = os.environ.get("DISCORD_TOKEN")
+if TOKEN:
+    bot.run(TOKEN)
+else:
+    print("❌ خطأ: DISCORD_TOKEN غير موجود!")
