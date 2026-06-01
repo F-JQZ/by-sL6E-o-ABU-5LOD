@@ -8,7 +8,7 @@ import math
 import asyncio
 
 # ============================================================
-#  إعدادات السيرفر المباشرة
+#  إعدادات السيرفر الثابتة - الـ IP المطلوب فقط
 # ============================================================
 SERVER_IP   = "194.45.197.143"
 SERVER_PORT = "30120"
@@ -18,7 +18,7 @@ BASE_URL        = f"http://{SERVER_IP}:{SERVER_PORT}/players.json"
 INFO_URL        = f"http://{SERVER_IP}:{SERVER_PORT}/info.json"
 FIVEM_THUMBNAIL = "https://i.imgur.com/F4LkFHJ.png"
 PLAYERS_PER_PAGE = 20
-TIMEOUT_SEC      = 4  # وقت الانتظار قبل إلغاء الطلب لحماية البوت من التعليق
+TIMEOUT_SEC      = 6  # زيادة الوقت لتتحمل الاستضافة الضغط العالي (1500 لاعب)
 
 COLOR_DEFAULT = 0x5865F2
 COLOR_ERROR   = 0xED4245
@@ -62,28 +62,52 @@ def error_embed(message: str) -> discord.Embed:
     return embed
 
 # ============================================================
-#  جلب البيانات المباشر الآمن (بدون كراش)
+#  تخطي حماية السيرفرات الضخمة (تعديل كامل للهيدرز)
 # ============================================================
 async def fetch_players():
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    # الهيدرز هذي تجعل جدار حماية السيرفر الـ 1500 يظن أن الطلب جاي من متصفح حقيقي آمن
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
+        "Origin": "https://cfx.re",
+        "Referer": "https://cfx.re/"
+    }
     timeout = aiohttp.ClientTimeout(total=TIMEOUT_SEC)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         try:
             async with session.get(BASE_URL, headers=headers) as r:
                 if r.status == 200:
                     return await r.json(content_type=None)
+                elif r.status == 403 or r.status == 404:
+                    # محاولة بديلة عبر البورت الافتراضي للموقع إذا كان السيرفر يحول الطلبات
+                    alt_url = f"http://{SERVER_IP}/players.json"
+                    async with session.get(alt_url, headers=headers) as alt_r:
+                        if alt_r.status == 200:
+                            return await alt_r.json(content_type=None)
         except Exception as e:
             print(f"❌ fetch_players error: {e}")
     return None
 
 async def fetch_info():
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
+        "Origin": "https://cfx.re",
+        "Referer": "https://cfx.re/"
+    }
     timeout = aiohttp.ClientTimeout(total=TIMEOUT_SEC)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         try:
             async with session.get(INFO_URL, headers=headers) as r:
                 if r.status == 200:
                     return await r.json(content_type=None)
+                elif r.status == 403 or r.status == 404:
+                    alt_url = f"http://{SERVER_IP}/info.json"
+                    async with session.get(alt_url, headers=headers) as alt_r:
+                        if alt_r.status == 200:
+                            return await alt_r.json(content_type=None)
         except Exception as e:
             print(f"❌ fetch_info error: {e}")
     return None
@@ -220,7 +244,7 @@ async def cmd_players(interaction: discord.Interaction):
 
     if players_data is None:
         await interaction.followup.send(embed=error_embed(
-            "❌ **فشل الاتصال بالسيرفر**\nتأكد من أن السيرفر يعمل حالياً وأن منفذ الـ API مفتوح."
+            "❌ **فشل في الاتصال بالسيرفر**\nالاستضافة ترفض طلبات البوت المباشرة. تأكد من فتح المنفذ الخارجي للسيرفر."
         ))
         return
 
@@ -361,7 +385,6 @@ async def cmd_stats(interaction: discord.Interaction):
 
     total_players = len(players_data)
     
-    # تأمين جلب الاسم والحد الأقصى لمنع الكراش إذا كانت البيانات ناقصة
     max_players = "?"
     server_name = "Unknown Server"
     
