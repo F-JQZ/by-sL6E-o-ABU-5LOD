@@ -225,33 +225,7 @@ class PanelView(discord.ui.View):
         embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-# ============================================================
-#  /players — كل اللاعبين مرة وحدة بدون أزرار
-# ============================================================
-@bot.tree.command(name="players", description="عرض قائمة كاملة لجميع اللاعبين المتصلين")
-async def cmd_players(interaction: discord.Interaction):
-    await interaction.response.defer(thinking=True)
 
-    players_data = await fetch_players()
-
-    if players_data is None:
-        await interaction.followup.send(embed=error_embed(
-            "❌ **فشل الاتصال بالسيرفر**\n"
-            "السيرفر قد يكون:\n"
-            "• مقفل الـ firewall أمام طلبات خارجية\n"
-            "• متوقف عن العمل مؤقتاً\n"
-            "• الـ IP أو Port غلط"
-        ))
-        return
-
-    if len(players_data) == 0:
-        await interaction.followup.send(embed=error_embed("⚠️ لا يوجد لاعبون متصلون حالياً."))
-        return
-
-    embeds = build_full_players_embed(players_data)
-
-    # Discord يسمح بإرسال 10 embeds بحد أقصى في رسالة وحدة
-    await interaction.followup.send(embeds=embeds[:10])
 # ============================================================
 #  البوت
 # ============================================================
