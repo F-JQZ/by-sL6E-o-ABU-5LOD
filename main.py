@@ -12,7 +12,7 @@ import ssl
 SERVER_IP   = "194.45.197.196"
 SERVER_PORT = "30120"
 GUILD_ID    = 1510735912185630812
-BOT_LOGO    = "رابط_الصورة_هنا"  # ← ارفع الصورة على Discord وضع الرابط هنا
+BOT_LOGO    = ""  # ← ضع رابط صورتك هنا بعد رفعها على Discord
 
 BASE_URL = f"http://{SERVER_IP}:{SERVER_PORT}/players.json"
 INFO_URL = f"http://{SERVER_IP}:{SERVER_PORT}/info.json"
@@ -59,6 +59,11 @@ def error_embed(msg: str) -> discord.Embed:
     e = discord.Embed(title="SL6E BOT", description=msg, color=COLOR_ERROR)
     e.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
     return e
+
+def set_logo(embed: discord.Embed) -> discord.Embed:
+    if BOT_LOGO.startswith("http"):
+        embed.set_thumbnail(url=BOT_LOGO)
+    return embed
 
 # ============================================================
 #  جلب البيانات
@@ -112,34 +117,30 @@ class SearchIDModal(discord.ui.Modal, title="🔍 بحث بـ Server ID"):
         except ValueError:
             await interaction.followup.send(embed=error_embed("❌ أدخل رقماً صحيحاً."), ephemeral=True)
             return
-
         players_data = await fetch_players()
         if players_data is None:
             await interaction.followup.send(embed=error_embed("❌ فشل جلب بيانات السيرفر."), ephemeral=True)
             return
-
         target = next((p for p in players_data if p.get("id") == sid), None)
         if not target:
             await interaction.followup.send(embed=error_embed(
                 f"❌ لا يوجد لاعب بالـ ID **{sid}**.\n⚡ المتصلون: **{len(players_data)}**"
             ), ephemeral=True)
             return
-
         identifiers = target.get("identifiers", [])
-        steam   = extract_identifier(identifiers, "steam:")
-        disc    = extract_identifier(identifiers, "discord:")
-        lic     = extract_identifier(identifiers, "license:")
-
+        steam = extract_identifier(identifiers, "steam:")
+        disc  = extract_identifier(identifiers, "discord:")
+        lic   = extract_identifier(identifiers, "license:")
         embed = discord.Embed(title="SL6E BOT", color=COLOR_DEFAULT)
         embed.set_author(name="🔍 ID Search")
-        embed.set_thumbnail(url=BOT_LOGO)
-        embed.add_field(name="👤 Username",        value=f"`{target.get('name','Unknown')}`",  inline=True)
-        embed.add_field(name="🆔 Server ID",       value=f"`{target.get('id','?')}`",          inline=True)
-        embed.add_field(name="📶 Ping",            value=f"`{target.get('ping','?')} ms`",     inline=True)
-        embed.add_field(name="🟠 Steam",           value=f"`{steam}`"  if steam else "`—`",    inline=True)
-        embed.add_field(name="🔵 Discord",         value=f"`{disc}`"   if disc  else "`—`",    inline=True)
-        embed.add_field(name="🔑 License",         value=f"`{lic}`"    if lic   else "`—`",    inline=True)
-        embed.add_field(name="📋 All Identifiers", value=format_identifiers(identifiers),       inline=False)
+        set_logo(embed)
+        embed.add_field(name="👤 Username",        value=f"`{target.get('name','Unknown')}`", inline=True)
+        embed.add_field(name="🆔 Server ID",       value=f"`{target.get('id','?')}`",         inline=True)
+        embed.add_field(name="📶 Ping",            value=f"`{target.get('ping','?')} ms`",    inline=True)
+        embed.add_field(name="🟠 Steam",           value=f"`{steam}`" if steam else "`—`",    inline=True)
+        embed.add_field(name="🔵 Discord",         value=f"`{disc}`"  if disc  else "`—`",    inline=True)
+        embed.add_field(name="🔑 License",         value=f"`{lic}`"   if lic   else "`—`",    inline=True)
+        embed.add_field(name="📋 All Identifiers", value=format_identifiers(identifiers),      inline=False)
         embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -161,12 +162,10 @@ class SearchNameModal(discord.ui.Modal, title="🔎 بحث بالاسم"):
         if players_data is None:
             await interaction.followup.send(embed=error_embed("❌ فشل جلب بيانات السيرفر."), ephemeral=True)
             return
-
-        results = [p for p in players_data if name.lower() in p.get("name", "").lower()]
+        results = [p for p in players_data if name.lower() in p.get("name","").lower()]
         if not results:
             await interaction.followup.send(embed=error_embed(f"❌ لم يُعثر على **\"{name}\"**."), ephemeral=True)
             return
-
         truncated = len(results) > 20
         results   = results[:20]
         lines = "".join(
@@ -178,7 +177,7 @@ class SearchNameModal(discord.ui.Modal, title="🔎 بحث بالاسم"):
             description=f"**🔎 نتائج: \"{name}\"** — {len(results)} نتيجة" + ("\n⚠️ أول 20 فقط" if truncated else ""),
             color=COLOR_SUCCESS
         )
-        embed.set_thumbnail(url=BOT_LOGO)
+        set_logo(embed)
         embed.add_field(name="النتائج", value=f"```gml\n{lines}```", inline=False)
         embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
         await interaction.followup.send(embed=embed, ephemeral=True)
@@ -198,22 +197,15 @@ class PanelView(discord.ui.View):
             await interaction.followup.send(embed=error_embed("❌ السيرفر غير متاح."), ephemeral=True)
             return
         total = len(players_data)
-        embed = discord.Embed(
-            title="SL6E BOT",
-            description=f"**🎮 اللاعبون المتصلون — {total} لاعب**",
-            color=COLOR_DEFAULT
-        )
-        embed.set_thumbnail(url=BOT_LOGO)
+        embed = discord.Embed(title="SL6E BOT", description=f"**🎮 اللاعبون المتصلون — {total} لاعب**", color=COLOR_DEFAULT)
+        set_logo(embed)
         if total == 0:
             embed.description = "⚠️ لا يوجد لاعبون متصلون حالياً."
         else:
             chunk = players_data[:25]
             lines = "".join(f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}\n" for p in chunk)
             embed.add_field(name=f"أول {len(chunk)} لاعب", value=f"```gml\n{lines}```", inline=False)
-            if total > 25:
-                embed.set_footer(text=f"⚡ {total-25} لاعب إضافي غير معروض")
-            else:
-                embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
+            embed.set_footer(text=f"⚡ {total-25} إضافي — اضغط مرة ثانية للمزيد" if total > 25 else f"Server: {SERVER_IP}:{SERVER_PORT}")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     @discord.ui.button(label="📊 إحصائيات", style=discord.ButtonStyle.secondary, row=0)
@@ -231,7 +223,7 @@ class PanelView(discord.ui.View):
         avg_ping = round(sum(pings) / len(pings)) if pings else 0
         embed = discord.Embed(title="SL6E BOT", description="**📊 إحصائيات السيرفر**", color=COLOR_DEFAULT)
         embed.set_author(name="Server Stats")
-        embed.set_thumbnail(url=BOT_LOGO)
+        set_logo(embed)
         embed.add_field(name="🖥️ السيرفر",     value=f"`{name}`",                    inline=False)
         embed.add_field(name="🟢 الحالة",       value="أونلاين",                      inline=True)
         embed.add_field(name="👥 اللاعبون",     value=f"`{total} / {max_p}`",         inline=True)
@@ -251,7 +243,7 @@ class PanelView(discord.ui.View):
     @discord.ui.button(label="ℹ️ معلومات", style=discord.ButtonStyle.secondary, row=1)
     async def btn_info(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title="SL6E BOT", description="**ℹ️ دليل الاستخدام**", color=COLOR_DEFAULT)
-        embed.set_thumbnail(url=BOT_LOGO)
+        set_logo(embed)
         embed.add_field(name="الأزرار", value=(
             "🎮 **اللاعبين** — عرض اللاعبين المتصلين\n"
             "📊 **إحصائيات** — إحصائيات السيرفر الكاملة\n"
@@ -308,7 +300,7 @@ async def cmd_panel(interaction: discord.Interaction):
         description="**🎮 لوحة تحكم السيرفر**",
         color=COLOR_DEFAULT
     )
-    embed.set_thumbnail(url=BOT_LOGO)
+    set_logo(embed)
     await interaction.response.send_message(embed=embed, view=PanelView(), ephemeral=True)
 
 # ============================================================
