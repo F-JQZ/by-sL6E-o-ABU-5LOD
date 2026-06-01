@@ -176,7 +176,7 @@ class PanelView(discord.ui.View):
         if total == 0:
             embed.description = "⚠️ لا يوجد لاعبون متصلون حالياً."
         else:
-            chunk = data[:25]
+            chunk = data[:200]
             lines = "".join(f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}\n" for p in chunk)
             embed.add_field(name=f"أول {len(chunk)} لاعب", value=f"```gml\n{lines}```", inline=False)
             embed.set_footer(text=f"⚡ {total-200} إضافي" if total > 200 else f"Server: {SERVER_IP}:{SERVER_PORT}")
