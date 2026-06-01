@@ -149,8 +149,7 @@ class SearchNameModal(discord.ui.Modal, title="🔎 بحث بالاسم"):
             description=f"**🔎 نتائج: \"{name}\"** — {len(show)} نتيجة" + ("\n⚠️ أول 20 فقط" if len(results) > 20 else ""),
             color=COLOR_SUCCESS
         )
-        embed.add_field(name="النتائج", value=f"```gml\n{lines}
-```", inline=False)
+        embed.add_field(name="النتائج", value=f"```gml\n{lines}```", inline=False) # تم إصلاح الإغلاق هنا
         embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -185,14 +184,14 @@ class PlayersPaginationView(discord.ui.View):
             lines = "".join(f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}\n" for p in chunk)
             embed.add_field(
                 name=f"الصفحة {self.current_page + 1} من {self.total_pages} (اللاعبين {start_idx + 1} - {min(end_idx, total)})", 
-                value=f"```gml\n{lines}```", 
+                value=f"```gml\n{lines}
+```", 
                 inline=False
             )
             embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
         return embed
 
     def update_buttons(self):
-        # تعطيل أو تفعيل الأزرار بناءً على الصفحة الحالية
         self.btn_prev.disabled = self.current_page == 0
         self.btn_next.disabled = self.current_page == self.total_pages - 1
 
@@ -216,7 +215,7 @@ class PlayersPaginationView(discord.ui.View):
 # ============================================================
 class PanelView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None) # تم تغيير الـ timeout لـ None لضمان عمل اللوحة دائماً بدون توقف
+        super().__init__(timeout=None)
 
     @discord.ui.button(label="🎮 اللاعبين", style=discord.ButtonStyle.primary, row=0)
     async def btn_players(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -226,7 +225,6 @@ class PanelView(discord.ui.View):
             await interaction.followup.send(embed=error_embed("❌ السيرفر غير متاح."), ephemeral=True)
             return
         
-        # استدعاء كلاس الصفحات هنا ليعرض كل اللاعبين بالتنقل
         paginator = PlayersPaginationView(data, per_page=25)
         await interaction.followup.send(embed=paginator.get_page_embed(), view=paginator, ephemeral=True)
 
@@ -309,7 +307,7 @@ async def cmd_panel(interaction: discord.Interaction):
         description="**🎮 لوحة تحكم السيرفر**",
         color=COLOR_DEFAULT
     )
-    embed.set_image(url="attachment://logo.webp")   # ← الصورة في النص، الأزرار تحتها
+    embed.set_image(url="attachment://logo.webp")
     logo = get_logo()
     if logo:
         await interaction.response.send_message(embed=embed, view=PanelView(), file=logo, ephemeral=True)
