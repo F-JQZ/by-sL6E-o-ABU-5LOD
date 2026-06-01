@@ -17,9 +17,10 @@ GUILD_ID    = 1510735912185630812
 BASE_URL = f"http://{SERVER_IP}:{SERVER_PORT}/players.json"
 INFO_URL = f"http://{SERVER_IP}:{SERVER_PORT}/info.json"
 
-FIVEM_THUMBNAIL   = "https://cdn.discordapp.com/emojis/1060951257456812082.png"
-PLAYERS_PER_FIELD = 25
-TIMEOUT_SEC       = 10
+# صورة FiveM بديلة (من CDN رسمي)
+FIVEM_THUMBNAIL  = "https://cdn.discordapp.com/emojis/1060951257456812082.png"
+PLAYERS_PER_FIELD = 25   # عدد اللاعبين في كل حقل داخل الـ embed
+TIMEOUT_SEC       = 10   # رفعنا الـ timeout
 
 COLOR_DEFAULT = 0x5865F2
 COLOR_ERROR   = 0xED4245
@@ -62,7 +63,7 @@ def error_embed(message: str) -> discord.Embed:
     return embed
 
 # ============================================================
-#  جلب البيانات
+#  جلب البيانات — مع عدة محاولات وهيدرات متعددة
 # ============================================================
 HEADERS_LIST = [
     {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"},
@@ -72,6 +73,7 @@ HEADERS_LIST = [
 
 async def fetch_players():
     timeout = aiohttp.ClientTimeout(total=TIMEOUT_SEC)
+    # نجرب أكثر من User-Agent لتفادي الحجب
     for headers in HEADERS_LIST:
         try:
             connector = aiohttp.TCPConnector(ssl=False)
@@ -96,12 +98,20 @@ async def fetch_info():
     return None
 
 # ============================================================
-#  بناء embed القائمة الكاملة
+#  بناء embed القائمة الكاملة (بدون pagination — كل شيء دفعة وحدة)
 # ============================================================
 def build_full_players_embed(players_data: list) -> list[discord.Embed]:
+    """
+    يقسم اللاعبين على embeds متعددة (كل embed يحتوي حتى 5 حقول × 25 لاعب = 125 لاعب).
+    Discord يسمح بإرسال 10 embeds في رسالة وحدة.
+    """
     total = len(players_data)
     embeds = []
+
+    # قسّم اللاعبين إلى مجموعات
     chunks = [players_data[i:i+PLAYERS_PER_FIELD] for i in range(0, total, PLAYERS_PER_FIELD)]
+
+    # كل embed يحتوي على 5 حقول كحد أقصى (Discord limit = 25 field per embed)
     FIELDS_PER_EMBED = 5
     embed_chunks = [chunks[i:i+FIELDS_PER_EMBED] for i in range(0, len(chunks), FIELDS_PER_EMBED)]
 
@@ -120,10 +130,7 @@ def build_full_players_embed(players_data: list) -> list[discord.Embed]:
             embed = discord.Embed(color=COLOR_DEFAULT)
 
         for chunk in group:
-            lines = "".join(
-                f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}\n"
-                for p in chunk
-            )
+            lines = "".join(f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}\n" for p in chunk)
             start_id = chunk[0].get('id', '?')
             end_id   = chunk[-1].get('id', '?')
             embed.add_field(
@@ -175,9 +182,9 @@ async def on_ready():
     print(f"✅ البوت شغال: {bot.user.name}  |  {SERVER_IP}:{SERVER_PORT}")
 
 # ============================================================
-#  /playerstrg
+#  /players — كل اللاعبين مرة وحدة بدون أزرار
 # ============================================================
-@bot.tree.command(name="playerstrg", description="عرض قائمة كاملة لجميع اللاعبين المتصلين")
+@bot.tree.command(name="players", description="عرض قائمة كاملة لجميع اللاعبين المتصلين")
 async def cmd_players(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
 
@@ -198,12 +205,14 @@ async def cmd_players(interaction: discord.Interaction):
         return
 
     embeds = build_full_players_embed(players_data)
+
+    # Discord يسمح بإرسال 10 embeds بحد أقصى في رسالة وحدة
     await interaction.followup.send(embeds=embeds[:10])
 
 # ============================================================
-#  /idtrg
+#  /id
 # ============================================================
-@bot.tree.command(name="idtrg", description="البحث عن لاعب داخل السيرفر عبر الـ Server ID")
+@bot.tree.command(name="id", description="البحث عن لاعب داخل السيرفر عبر الـ Server ID")
 @app_commands.describe(server_id="الـ ID الخاص باللاعب داخل السيرفر")
 async def cmd_id(interaction: discord.Interaction, server_id: int):
     await interaction.response.defer(thinking=True)
@@ -225,10 +234,10 @@ async def cmd_id(interaction: discord.Interaction, server_id: int):
         ))
         return
 
-    identifiers   = target.get("identifiers", [])
-    steam_raw     = extract_identifier(identifiers, "steam:")
-    discord_raw   = extract_identifier(identifiers, "discord:")
-    license_raw   = extract_identifier(identifiers, "license:")
+    identifiers  = target.get("identifiers", [])
+    steam_raw    = extract_identifier(identifiers, "steam:")
+    discord_raw  = extract_identifier(identifiers, "discord:")
+    license_raw  = extract_identifier(identifiers, "license:")
     steam_value   = f"`{steam_raw}`"                        if steam_raw   else "`غير مرتبط`"
     discord_value = f"<@{discord_raw}> (`{discord_raw}`)"  if discord_raw else "`غير مرتبط`"
     license_value = f"`{license_raw}`"                      if license_raw else "`—`"
@@ -239,20 +248,20 @@ async def cmd_id(interaction: discord.Interaction, server_id: int):
         color=COLOR_DEFAULT
     )
     embed.set_author(name="ID Search")
-    embed.add_field(name="Username",           value=f"`{target.get('name','Unknown')}`", inline=True)
-    embed.add_field(name="Server ID",          value=f"`{target.get('id','?')}`",         inline=True)
-    embed.add_field(name="Ping",               value=f"`{target.get('ping','?')} ms`",    inline=True)
-    embed.add_field(name="🟠 Steam",           value=steam_value,                          inline=True)
-    embed.add_field(name="🔵 Discord",         value=discord_value,                        inline=True)
-    embed.add_field(name="🔑 License",         value=license_value,                        inline=True)
-    embed.add_field(name="📋 All Identifiers", value=format_identifiers(identifiers),      inline=False)
+    embed.add_field(name="Username",          value=f"`{target.get('name','Unknown')}`", inline=True)
+    embed.add_field(name="Server ID",         value=f"`{target.get('id','?')}`",         inline=True)
+    embed.add_field(name="Ping",              value=f"`{target.get('ping','?')} ms`",    inline=True)
+    embed.add_field(name="🟠 Steam",          value=steam_value,                          inline=True)
+    embed.add_field(name="🔵 Discord",        value=discord_value,                        inline=True)
+    embed.add_field(name="🔑 License",        value=license_value,                        inline=True)
+    embed.add_field(name="📋 All Identifiers",value=format_identifiers(identifiers),      inline=False)
     embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
     await interaction.followup.send(embed=embed)
 
 # ============================================================
-#  /searchtrg
+#  /search
 # ============================================================
-@bot.tree.command(name="searchtrg", description="البحث عن لاعب بالاسم")
+@bot.tree.command(name="search", description="البحث عن لاعب بالاسم")
 @app_commands.describe(name="اسم اللاعب أو جزء منه")
 async def cmd_search(interaction: discord.Interaction, name: str):
     await interaction.response.defer(thinking=True)
@@ -268,18 +277,13 @@ async def cmd_search(interaction: discord.Interaction, name: str):
 
     results = [p for p in players_data if name.strip().lower() in p.get("name", "").lower()]
     if not results:
-        await interaction.followup.send(embed=error_embed(
-            f"❌ لم يُعثر على لاعب يحتوي اسمه على **\"{name}\"**."
-        ))
+        await interaction.followup.send(embed=error_embed(f"❌ لم يُعثر على لاعب يحتوي اسمه على **\"{name}\"**."))
         return
 
     truncated = len(results) > 20
     results   = results[:20]
-    lines = "".join(
-        f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}  (ping: {p.get('ping','?')}ms)\n"
-        for p in results
-    )
-    note = "\n⚠️ تم عرض أول 20 نتيجة فقط." if truncated else ""
+    lines = "".join(f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}  (ping: {p.get('ping','?')}ms)\n" for p in results)
+    note  = "\n⚠️ تم عرض أول 20 نتيجة فقط." if truncated else ""
 
     embed = discord.Embed(
         title="FiveM Bot",
@@ -292,9 +296,9 @@ async def cmd_search(interaction: discord.Interaction, name: str):
     await interaction.followup.send(embed=embed)
 
 # ============================================================
-#  /statstrg
+#  /stats
 # ============================================================
-@bot.tree.command(name="statstrg", description="إحصائيات السيرفر العامة")
+@bot.tree.command(name="stats", description="إحصائيات السيرفر العامة")
 async def cmd_stats(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
 
@@ -307,8 +311,8 @@ async def cmd_stats(interaction: discord.Interaction):
     max_players   = info_data.get("vars", {}).get("sv_maxClients", "?") if info_data else "?"
     hostname      = info_data.get("vars", {}).get("sv_hostname", "Unknown") if info_data else "Unknown"
     server_name   = info_data.get("name", hostname) if info_data else hostname
-    pings         = [p.get("ping", 0) for p in players_data if isinstance(p.get("ping"), int)]
-    avg_ping      = round(sum(pings) / len(pings)) if pings else 0
+    pings    = [p.get("ping", 0) for p in players_data if isinstance(p.get("ping"), int)]
+    avg_ping = round(sum(pings) / len(pings)) if pings else 0
 
     embed = discord.Embed(title="FiveM Bot", description="**Server Statistics**", color=COLOR_DEFAULT)
     embed.set_author(name="Server Stats")
