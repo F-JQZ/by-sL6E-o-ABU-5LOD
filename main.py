@@ -62,34 +62,52 @@ def get_logo() -> discord.File | None:
     return None
 
 # ============================================================
-#  جلب البيانات
+#  جلب البيانات (نسخة ذكية ومقاومة للحظر)
 # ============================================================
-_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"}
+_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json"
+}
 
 async def fetch_players():
-    try:
-        async with aiohttp.ClientSession(
+    # محاولة جلب البيانات من الجلسة المشتركة للبوت مع نظام إعادة محاولة (3 مرات كحد أقصى)
+    if bot.session is None or bot.session.closed:
+        bot.session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=TIMEOUT_SEC),
             connector=aiohttp.TCPConnector(ssl=False)
-        ) as s:
-            async with s.get(BASE_URL, headers=_HEADERS) as r:
+        )
+    
+    for attempt in range(3):
+        try:
+            async with bot.session.get(BASE_URL, headers=_HEADERS) as r:
                 if r.status == 200:
                     return await r.json(content_type=None)
-    except Exception as e:
-        print(f"⚠️ players: {e}")
+                elif r.status in [429, 502, 503]:
+                    await asyncio.sleep(0.5)  # انتظار بسيط في حال وجود ضغط أو جدار ناري
+        except Exception as e:
+            if attempt == 2:
+                print(f"⚠️ players fetch error after 3 attempts: {e}")
+            await asyncio.sleep(0.5)
     return None
 
 async def fetch_info():
-    try:
-        async with aiohttp.ClientSession(
+    if bot.session is None or bot.session.closed:
+        bot.session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=TIMEOUT_SEC),
             connector=aiohttp.TCPConnector(ssl=False)
-        ) as s:
-            async with s.get(INFO_URL, headers=_HEADERS) as r:
+        )
+        
+    for attempt in range(3):
+        try:
+            async with bot.session.get(INFO_URL, headers=_HEADERS) as r:
                 if r.status == 200:
                     return await r.json(content_type=None)
-    except Exception as e:
-        print(f"⚠️ info: {e}")
+                elif r.status in [429, 502, 503]:
+                    await asyncio.sleep(0.5)
+        except Exception as e:
+            if attempt == 2:
+                print(f"⚠️ info fetch error after 3 attempts: {e}")
+            await asyncio.sleep(0.5)
     return None
 
 # ============================================================
@@ -107,7 +125,7 @@ class SearchIDModal(discord.ui.Modal, title="🔍 بحث بـ Server ID"):
             return
         data = await fetch_players()
         if data is None:
-            await interaction.followup.send(embed=error_embed("❌ فشل جلب بيانات السيرفر."), ephemeral=True)
+            await interaction.followup.send(embed=error_embed("❌ فشل جلب بيانات السيرفر أو السيرفر غير متاح حالياً."), ephemeral=True)
             return
         target = next((p for p in data if p.get("id") == sid), None)
         if not target:
@@ -136,7 +154,7 @@ class SearchNameModal(discord.ui.Modal, title="🔎 بحث بالاسم"):
         name = self.player_name.value.strip()
         data = await fetch_players()
         if data is None:
-            await interaction.followup.send(embed=error_embed("❌ فشل جلب بيانات السيرفر."), ephemeral=True)
+            await interaction.followup.send(embed=error_embed("❌ فشل جلب بيانات السيرفر أو السيرفر غير متاح حالياً."), ephemeral=True)
             return
         results = [p for p in data if name.lower() in p.get("name","").lower()]
         if not results:
@@ -167,156 +185,4 @@ class PlayersPaginationView(discord.ui.View):
         self.update_buttons()
 
     def get_page_embed(self) -> discord.Embed:
-        start_idx = self.current_page * self.per_page
-        end_idx = start_idx + self.per_page
-        chunk = self.data[start_idx:end_idx]
-        total = len(self.data)
-
-        embed = discord.Embed(
-            title="SL6E BOT",
-            description=f"**🎮 اللاعبون المتصلون — {total} لاعب**",
-            color=COLOR_DEFAULT
-        )
-        
-        if total == 0:
-            embed.description = "⚠️ لا يوجد لاعبون متصلون حالياً."
-        else:
-            lines = "".join(f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}\n" for p in chunk)
-            # تم إصلاح الإغلاق هنا للـ f-string بإضافة ``` في السطر التالي بشكل صحيح
-            embed.add_field(
-                name=f"الصفحة {self.current_page + 1} من {self.total_pages} (اللاعبين {start_idx + 1} - {min(end_idx, total)})", 
-                value=f"```gml\n{lines}```", 
-                inline=False
-            )
-            embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
-        return embed
-
-    def update_buttons(self):
-        self.btn_prev.disabled = self.current_page == 0
-        self.btn_next.disabled = self.current_page == self.total_pages - 1
-
-    @discord.ui.button(label="◀️ السابق", style=discord.ButtonStyle.secondary)
-    async def btn_prev(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.current_page > 0:
-            self.current_page -= 1
-            self.update_buttons()
-            await interaction.response.edit_message(embed=self.get_page_embed(), view=self)
-
-    @discord.ui.button(label="التالي ▶️", style=discord.ButtonStyle.secondary)
-    async def btn_next(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.current_page < self.total_pages - 1:
-            self.current_page += 1
-            self.update_buttons()
-            await interaction.response.edit_message(embed=self.get_page_embed(), view=self)
-
-
-# ============================================================
-#  View الأزرار الرئيسية
-# ============================================================
-class PanelView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(label="🎮 اللاعبين", style=discord.ButtonStyle.primary, row=0)
-    async def btn_players(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(thinking=True, ephemeral=True)
-        data = await fetch_players()
-        if data is None:
-            await interaction.followup.send(embed=error_embed("❌ السيرفر غير متاح."), ephemeral=True)
-            return
-        
-        paginator = PlayersPaginationView(data, per_page=25)
-        await interaction.followup.send(embed=paginator.get_page_embed(), view=paginator, ephemeral=True)
-
-    @discord.ui.button(label="📊 إحصائيات", style=discord.ButtonStyle.primary, row=0)
-    async def btn_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(thinking=True, ephemeral=True)
-        data, info = await asyncio.gather(fetch_players(), fetch_info())
-        if data is None:
-            await interaction.followup.send(embed=error_embed("❌ السيرفر غير متاح."), ephemeral=True)
-            return
-        total    = len(data)
-        vars_    = info.get("vars", {}) if info else {}
-        max_p    = vars_.get("sv_maxClients", "?")
-        srv      = info.get("name", vars_.get("sv_hostname","Unknown")) if info else "Unknown"
-        pings    = [p.get("ping",0) for p in data if isinstance(p.get("ping"),int)]
-        avg_ping = round(sum(pings)/len(pings)) if pings else 0
-        embed = discord.Embed(title="SL6E BOT", description="**📊 إحصائيات السيرفر**", color=COLOR_DEFAULT)
-        embed.add_field(name="🖥️ السيرفر",     value=f"`{srv}`",                     inline=False)
-        embed.add_field(name="🟢 الحالة",       value="أونلاين",                      inline=True)
-        embed.add_field(name="👥 اللاعبون",     value=f"`{total} / {max_p}`",         inline=True)
-        embed.add_field(name="📶 متوسط البينج", value=f"`{avg_ping} ms`",             inline=True)
-        embed.add_field(name="🌐 العنوان",      value=f"`{SERVER_IP}:{SERVER_PORT}`", inline=True)
-        embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
-    @discord.ui.button(label="🔍 بحث بـ ID", style=discord.ButtonStyle.primary, row=1)
-    async def btn_search_id(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(SearchIDModal())
-
-    @discord.ui.button(label="🔎 بحث بالاسم", style=discord.ButtonStyle.primary, row=1)
-    async def btn_search_name(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(SearchNameModal())
-
-    @discord.ui.button(label="ℹ️ معلومات", style=discord.ButtonStyle.primary, row=1)
-    async def btn_info(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = discord.Embed(title="SL6E BOT", description="**ℹ️ دليل الاستخدام**", color=COLOR_DEFAULT)
-        embed.add_field(name="الأزرار", value=(
-            "🎮 **اللاعبين** — عرض اللاعبين المتصلين بالتنقل\n"
-            "📊 **إحصائيات** — إحصائيات السيرفر الكاملة\n"
-            "🔍 **بحث بـ ID** — ابحث بـ Server ID\n"
-            "🔎 **بحث بالاسم** — ابحث باسم اللاعب\n"
-            "ℹ️ **معلومات** — هذه الرسالة"
-        ), inline=False)
-        embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-
-# ============================================================
-#  البوت
-# ============================================================
-class FiveMBot(commands.Bot):
-    def __init__(self):
-        intents = discord.Intents.default()
-        intents.message_content = True
-        intents.members = True
-        super().__init__(command_prefix="!", intents=intents)
-
-    async def setup_hook(self):
-        guild = discord.Object(id=GUILD_ID)
-        self.tree.copy_global_to(guild=guild)
-        await self.tree.sync(guild=guild)
-        print(f"✅ مزامنة: {GUILD_ID}")
-
-bot = FiveMBot()
-
-@bot.event
-async def on_ready():
-    await bot.change_presence(
-        activity=discord.Activity(type=discord.ActivityType.watching, name="BY SL6E & ABO 5LOOD")
-    )
-    print(f"✅ {bot.user.name}  |  {SERVER_IP}:{SERVER_PORT}")
-
-# ============================================================
-#  /لوحة
-# ============================================================
-@bot.tree.command(name="لوحة", description="🎮 لوحة تحكم السيرفر الكاملة")
-async def cmd_panel(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="SL6E BOT",
-        description="**🎮 لوحة تحكم السيرفر**",
-        color=COLOR_DEFAULT
-    )
-    embed.set_image(url="attachment://logo.webp")
-    logo = get_logo()
-    if logo:
-        await interaction.response.send_message(embed=embed, view=PanelView(), file=logo, ephemeral=True)
-    else:
-        await interaction.response.send_message(embed=embed, view=PanelView(), ephemeral=True)
-
-# ============================================================
-TOKEN = os.environ.get("DISCORD_TOKEN")
-if TOKEN:
-    bot.run(TOKEN)
-else:
-    print("❌ DISCORD_TOKEN غير موجود — حط التوكن في متغير DISCORD_TOKEN")
+        start_idx = self.current_page * self.
