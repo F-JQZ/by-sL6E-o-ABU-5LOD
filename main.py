@@ -149,7 +149,7 @@ class SearchNameModal(discord.ui.Modal, title="🔎 بحث بالاسم"):
             description=f"**🔎 نتائج: \"{name}\"** — {len(show)} نتيجة" + ("\n⚠️ أول 20 فقط" if len(results) > 20 else ""),
             color=COLOR_SUCCESS
         )
-        embed.add_field(name="النتائج", value=f"```gml\n{lines}```", inline=False) # تم إصلاح الإغلاق هنا
+        embed.add_field(name="النتائج", value=f"```gml\n{lines}```", inline=False)
         embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -182,10 +182,10 @@ class PlayersPaginationView(discord.ui.View):
             embed.description = "⚠️ لا يوجد لاعبون متصلون حالياً."
         else:
             lines = "".join(f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}\n" for p in chunk)
+            # تم إصلاح الإغلاق هنا للـ f-string بإضافة ``` في السطر التالي بشكل صحيح
             embed.add_field(
                 name=f"الصفحة {self.current_page + 1} من {self.total_pages} (اللاعبين {start_idx + 1} - {min(end_idx, total)})", 
-                value=f"```gml\n{lines}
-```", 
+                value=f"```gml\n{lines}```", 
                 inline=False
             )
             embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
