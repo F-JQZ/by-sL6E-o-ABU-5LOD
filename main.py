@@ -4,7 +4,6 @@ from discord import app_commands
 import aiohttp
 import os
 import asyncio
-import ssl
 
 # ============================================================
 #  إعدادات السيرفر
@@ -12,15 +11,15 @@ import ssl
 SERVER_IP   = "194.45.197.196"
 SERVER_PORT = "30120"
 GUILD_ID    = 1510735912185630812
-BOT_LOGO    = ""  # ← ضع رابط صورتك هنا بعد رفعها على Discord
+
+# ← ضع اسم ملف الصورة في نفس مجلد main.py
+LOGO_FILE   = "logo.webp"
 
 BASE_URL = f"http://{SERVER_IP}:{SERVER_PORT}/players.json"
 INFO_URL = f"http://{SERVER_IP}:{SERVER_PORT}/info.json"
 
-PLAYERS_PER_FIELD = 25
-TIMEOUT_SEC       = 10
-
-COLOR_DEFAULT = 0x5865F2
+TIMEOUT_SEC   = 10
+COLOR_DEFAULT = 0x1DA1F2   # ← ازرق
 COLOR_ERROR   = 0xED4245
 COLOR_SUCCESS = 0x57F287
 
@@ -60,10 +59,10 @@ def error_embed(msg: str) -> discord.Embed:
     e.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
     return e
 
-def set_logo(embed: discord.Embed) -> discord.Embed:
-    if BOT_LOGO.startswith("http"):
-        embed.set_thumbnail(url=BOT_LOGO)
-    return embed
+def make_logo_file():
+    if os.path.exists(LOGO_FILE):
+        return discord.File(LOGO_FILE, filename="logo.webp")
+    return None
 
 # ============================================================
 #  جلب البيانات
@@ -133,7 +132,6 @@ class SearchIDModal(discord.ui.Modal, title="🔍 بحث بـ Server ID"):
         lic   = extract_identifier(identifiers, "license:")
         embed = discord.Embed(title="SL6E BOT", color=COLOR_DEFAULT)
         embed.set_author(name="🔍 ID Search")
-        set_logo(embed)
         embed.add_field(name="👤 Username",        value=f"`{target.get('name','Unknown')}`", inline=True)
         embed.add_field(name="🆔 Server ID",       value=f"`{target.get('id','?')}`",         inline=True)
         embed.add_field(name="📶 Ping",            value=f"`{target.get('ping','?')} ms`",    inline=True)
@@ -142,7 +140,12 @@ class SearchIDModal(discord.ui.Modal, title="🔍 بحث بـ Server ID"):
         embed.add_field(name="🔑 License",         value=f"`{lic}`"   if lic   else "`—`",    inline=True)
         embed.add_field(name="📋 All Identifiers", value=format_identifiers(identifiers),      inline=False)
         embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        logo = make_logo_file()
+        if logo:
+            embed.set_thumbnail(url="attachment://logo.webp")
+            await interaction.followup.send(embed=embed, file=logo, ephemeral=True)
+        else:
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
 # ============================================================
 #  Modal بحث بالاسم
@@ -169,7 +172,7 @@ class SearchNameModal(discord.ui.Modal, title="🔎 بحث بالاسم"):
         truncated = len(results) > 20
         results   = results[:20]
         lines = "".join(
-            f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','?')}  (ping: {p.get('ping','?')}ms)\n"
+            f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','?')}  ({p.get('ping','?')}ms)\n"
             for p in results
         )
         embed = discord.Embed(
@@ -177,7 +180,6 @@ class SearchNameModal(discord.ui.Modal, title="🔎 بحث بالاسم"):
             description=f"**🔎 نتائج: \"{name}\"** — {len(results)} نتيجة" + ("\n⚠️ أول 20 فقط" if truncated else ""),
             color=COLOR_SUCCESS
         )
-        set_logo(embed)
         embed.add_field(name="النتائج", value=f"```gml\n{lines}```", inline=False)
         embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
         await interaction.followup.send(embed=embed, ephemeral=True)
@@ -189,7 +191,7 @@ class PanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=180)
 
-    @discord.ui.button(label="🎮 اللاعبين", style=discord.ButtonStyle.secondary, row=0)
+    @discord.ui.button(label="🎮 اللاعبين", style=discord.ButtonStyle.primary, row=0)
     async def btn_players(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(thinking=True, ephemeral=True)
         players_data = await fetch_players()
@@ -197,18 +199,24 @@ class PanelView(discord.ui.View):
             await interaction.followup.send(embed=error_embed("❌ السيرفر غير متاح."), ephemeral=True)
             return
         total = len(players_data)
-        embed = discord.Embed(title="SL6E BOT", description=f"**🎮 اللاعبون المتصلون — {total} لاعب**", color=COLOR_DEFAULT)
-        set_logo(embed)
+        embed = discord.Embed(
+            title="SL6E BOT",
+            description=f"**🎮 اللاعبون المتصلون — {total} لاعب**",
+            color=COLOR_DEFAULT
+        )
         if total == 0:
             embed.description = "⚠️ لا يوجد لاعبون متصلون حالياً."
         else:
             chunk = players_data[:25]
             lines = "".join(f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}\n" for p in chunk)
             embed.add_field(name=f"أول {len(chunk)} لاعب", value=f"```gml\n{lines}```", inline=False)
-            embed.set_footer(text=f"⚡ {total-25} إضافي — اضغط مرة ثانية للمزيد" if total > 25 else f"Server: {SERVER_IP}:{SERVER_PORT}")
+            if total > 25:
+                embed.set_footer(text=f"⚡ {total - 25} لاعب إضافي")
+            else:
+                embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    @discord.ui.button(label="📊 إحصائيات", style=discord.ButtonStyle.secondary, row=0)
+    @discord.ui.button(label="📊 إحصائيات", style=discord.ButtonStyle.primary, row=0)
     async def btn_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(thinking=True, ephemeral=True)
         players_data, info_data = await asyncio.gather(fetch_players(), fetch_info())
@@ -218,32 +226,29 @@ class PanelView(discord.ui.View):
         total    = len(players_data)
         vars_    = info_data.get("vars", {}) if info_data else {}
         max_p    = vars_.get("sv_maxClients", "?")
-        name     = info_data.get("name", vars_.get("sv_hostname", "Unknown")) if info_data else "Unknown"
+        srv_name = info_data.get("name", vars_.get("sv_hostname", "Unknown")) if info_data else "Unknown"
         pings    = [p.get("ping", 0) for p in players_data if isinstance(p.get("ping"), int)]
         avg_ping = round(sum(pings) / len(pings)) if pings else 0
         embed = discord.Embed(title="SL6E BOT", description="**📊 إحصائيات السيرفر**", color=COLOR_DEFAULT)
-        embed.set_author(name="Server Stats")
-        set_logo(embed)
-        embed.add_field(name="🖥️ السيرفر",     value=f"`{name}`",                    inline=False)
-        embed.add_field(name="🟢 الحالة",       value="أونلاين",                      inline=True)
-        embed.add_field(name="👥 اللاعبون",     value=f"`{total} / {max_p}`",         inline=True)
-        embed.add_field(name="📶 متوسط البينج", value=f"`{avg_ping} ms`",             inline=True)
-        embed.add_field(name="🌐 العنوان",      value=f"`{SERVER_IP}:{SERVER_PORT}`", inline=True)
+        embed.add_field(name="🖥️ السيرفر",     value=f"`{srv_name}`",                inline=False)
+        embed.add_field(name="🟢 الحالة",       value="أونلاين",                     inline=True)
+        embed.add_field(name="👥 اللاعبون",     value=f"`{total} / {max_p}`",        inline=True)
+        embed.add_field(name="📶 متوسط البينج", value=f"`{avg_ping} ms`",            inline=True)
+        embed.add_field(name="🌐 العنوان",      value=f"`{SERVER_IP}:{SERVER_PORT}`",inline=True)
         embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    @discord.ui.button(label="🔍 بحث بـ ID", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="🔍 بحث بـ ID", style=discord.ButtonStyle.primary, row=1)
     async def btn_search_id(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(SearchIDModal())
 
-    @discord.ui.button(label="🔎 بحث بالاسم", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="🔎 بحث بالاسم", style=discord.ButtonStyle.primary, row=1)
     async def btn_search_name(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(SearchNameModal())
 
-    @discord.ui.button(label="ℹ️ معلومات", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="ℹ️ معلومات", style=discord.ButtonStyle.primary, row=1)
     async def btn_info(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title="SL6E BOT", description="**ℹ️ دليل الاستخدام**", color=COLOR_DEFAULT)
-        set_logo(embed)
         embed.add_field(name="الأزرار", value=(
             "🎮 **اللاعبين** — عرض اللاعبين المتصلين\n"
             "📊 **إحصائيات** — إحصائيات السيرفر الكاملة\n"
@@ -270,7 +275,7 @@ class FiveMBot(commands.Bot):
                 guild = discord.Object(id=GUILD_ID)
                 self.tree.copy_global_to(guild=guild)
                 await self.tree.sync(guild=guild)
-                print(f"✅ مزامنة فورية للسيرفر: {GUILD_ID}")
+                print(f"✅ مزامنة فورية: {GUILD_ID}")
             except discord.Forbidden:
                 await self.tree.sync()
                 print("✅ مزامنة عالمية.")
@@ -291,7 +296,7 @@ async def on_ready():
     print(f"✅ البوت شغال: {bot.user.name}  |  {SERVER_IP}:{SERVER_PORT}")
 
 # ============================================================
-#  /لوحة — الكوماند الوحيد
+#  /لوحة
 # ============================================================
 @bot.tree.command(name="لوحة", description="🎮 لوحة تحكم السيرفر الكاملة")
 async def cmd_panel(interaction: discord.Interaction):
@@ -300,8 +305,12 @@ async def cmd_panel(interaction: discord.Interaction):
         description="**🎮 لوحة تحكم السيرفر**",
         color=COLOR_DEFAULT
     )
-    set_logo(embed)
-    await interaction.response.send_message(embed=embed, view=PanelView(), ephemeral=True)
+    logo = make_logo_file()
+    if logo:
+        embed.set_image(url="attachment://logo.webp")
+        await interaction.response.send_message(embed=embed, view=PanelView(), file=logo, ephemeral=True)
+    else:
+        await interaction.response.send_message(embed=embed, view=PanelView(), ephemeral=True)
 
 # ============================================================
 TOKEN = os.environ.get("DISCORD_TOKEN")
