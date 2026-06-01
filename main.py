@@ -149,16 +149,74 @@ class SearchNameModal(discord.ui.Modal, title="🔎 بحث بالاسم"):
             description=f"**🔎 نتائج: \"{name}\"** — {len(show)} نتيجة" + ("\n⚠️ أول 20 فقط" if len(results) > 20 else ""),
             color=COLOR_SUCCESS
         )
-        embed.add_field(name="النتائج", value=f"```gml\n{lines}```", inline=False)
+        embed.add_field(name="النتائج", value=f"```gml\n{lines}
+```", inline=False)
         embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
+
 # ============================================================
-#  View الأزرار
+#  لوحة التنقل بين صفحات اللاعبين (Pagination)
+# ============================================================
+class PlayersPaginationView(discord.ui.View):
+    def __init__(self, players_data: list, per_page: int = 25):
+        super().__init__(timeout=60)
+        self.data = players_data
+        self.per_page = per_page
+        self.current_page = 0
+        self.total_pages = max(1, (len(players_data) + per_page - 1) // per_page)
+        self.update_buttons()
+
+    def get_page_embed(self) -> discord.Embed:
+        start_idx = self.current_page * self.per_page
+        end_idx = start_idx + self.per_page
+        chunk = self.data[start_idx:end_idx]
+        total = len(self.data)
+
+        embed = discord.Embed(
+            title="SL6E BOT",
+            description=f"**🎮 اللاعبون المتصلون — {total} لاعب**",
+            color=COLOR_DEFAULT
+        )
+        
+        if total == 0:
+            embed.description = "⚠️ لا يوجد لاعبون متصلون حالياً."
+        else:
+            lines = "".join(f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}\n" for p in chunk)
+            embed.add_field(
+                name=f"الصفحة {self.current_page + 1} من {self.total_pages} (اللاعبين {start_idx + 1} - {min(end_idx, total)})", 
+                value=f"```gml\n{lines}```", 
+                inline=False
+            )
+            embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
+        return embed
+
+    def update_buttons(self):
+        # تعطيل أو تفعيل الأزرار بناءً على الصفحة الحالية
+        self.btn_prev.disabled = self.current_page == 0
+        self.btn_next.disabled = self.current_page == self.total_pages - 1
+
+    @discord.ui.button(label="◀️ السابق", style=discord.ButtonStyle.secondary)
+    async def btn_prev(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.current_page > 0:
+            self.current_page -= 1
+            self.update_buttons()
+            await interaction.response.edit_message(embed=self.get_page_embed(), view=self)
+
+    @discord.ui.button(label="التالي ▶️", style=discord.ButtonStyle.secondary)
+    async def btn_next(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.current_page < self.total_pages - 1:
+            self.current_page += 1
+            self.update_buttons()
+            await interaction.response.edit_message(embed=self.get_page_embed(), view=self)
+
+
+# ============================================================
+#  View الأزرار الرئيسية
 # ============================================================
 class PanelView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=180)
+        super().__init__(timeout=None) # تم تغيير الـ timeout لـ None لضمان عمل اللوحة دائماً بدون توقف
 
     @discord.ui.button(label="🎮 اللاعبين", style=discord.ButtonStyle.primary, row=0)
     async def btn_players(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -167,20 +225,10 @@ class PanelView(discord.ui.View):
         if data is None:
             await interaction.followup.send(embed=error_embed("❌ السيرفر غير متاح."), ephemeral=True)
             return
-        total = len(data)
-        embed = discord.Embed(
-            title="SL6E BOT",
-            description=f"**🎮 اللاعبون المتصلون — {total} لاعب**",
-            color=COLOR_DEFAULT
-        )
-        if total == 0:
-            embed.description = "⚠️ لا يوجد لاعبون متصلون حالياً."
-        else:
-            chunk = data[:25]
-            lines = "".join(f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}\n" for p in chunk)
-            embed.add_field(name=f"أول {len(chunk)} لاعب", value=f"```gml\n{lines}```", inline=False)
-            embed.set_footer(text=f"⚡ {total-25} إضافي" if total > 25 else f"Server: {SERVER_IP}:{SERVER_PORT}")
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        
+        # استدعاء كلاس الصفحات هنا ليعرض كل اللاعبين بالتنقل
+        paginator = PlayersPaginationView(data, per_page=25)
+        await interaction.followup.send(embed=paginator.get_page_embed(), view=paginator, ephemeral=True)
 
     @discord.ui.button(label="📊 إحصائيات", style=discord.ButtonStyle.primary, row=0)
     async def btn_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -216,7 +264,7 @@ class PanelView(discord.ui.View):
     async def btn_info(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title="SL6E BOT", description="**ℹ️ دليل الاستخدام**", color=COLOR_DEFAULT)
         embed.add_field(name="الأزرار", value=(
-            "🎮 **اللاعبين** — عرض اللاعبين المتصلين\n"
+            "🎮 **اللاعبين** — عرض اللاعبين المتصلين بالتنقل\n"
             "📊 **إحصائيات** — إحصائيات السيرفر الكاملة\n"
             "🔍 **بحث بـ ID** — ابحث بـ Server ID\n"
             "🔎 **بحث بالاسم** — ابحث باسم اللاعب\n"
