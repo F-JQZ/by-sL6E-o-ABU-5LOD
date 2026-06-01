@@ -1,25 +1,22 @@
 import discord
 from discord.ext import commands
-from discord import app_commands
 import aiohttp
 import os
 import asyncio
 
 # ============================================================
-#  إعدادات السيرفر
+#  إعدادات
 # ============================================================
 SERVER_IP   = "194.45.197.196"
 SERVER_PORT = "30120"
 GUILD_ID    = 1510735912185630812
-
-# ← ضع اسم ملف الصورة في نفس مجلد main.py
-LOGO_FILE   = "logo.webp"
+LOGO_FILE   = "logo.webp"   # ← نفس مجلد main.py
 
 BASE_URL = f"http://{SERVER_IP}:{SERVER_PORT}/players.json"
 INFO_URL = f"http://{SERVER_IP}:{SERVER_PORT}/info.json"
 
 TIMEOUT_SEC   = 10
-COLOR_DEFAULT = 0x1DA1F2   # ← ازرق
+COLOR_DEFAULT = 0x1DA1F2
 COLOR_ERROR   = 0xED4245
 COLOR_SUCCESS = 0x57F287
 
@@ -27,9 +24,9 @@ COLOR_SUCCESS = 0x57F287
 #  مساعدات
 # ============================================================
 def extract_identifier(identifiers: list, prefix: str):
-    for ident in identifiers:
-        if ident.startswith(prefix):
-            return ident.replace(prefix, "")
+    for i in identifiers:
+        if i.startswith(prefix):
+            return i.replace(prefix, "")
     return None
 
 def format_identifiers(identifiers: list) -> str:
@@ -59,7 +56,7 @@ def error_embed(msg: str) -> discord.Embed:
     e.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
     return e
 
-def make_logo_file():
+def get_logo() -> discord.File | None:
     if os.path.exists(LOGO_FILE):
         return discord.File(LOGO_FILE, filename="logo.webp")
     return None
@@ -67,47 +64,39 @@ def make_logo_file():
 # ============================================================
 #  جلب البيانات
 # ============================================================
-HEADERS_LIST = [
-    {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"},
-    {"User-Agent": "FiveM/1.0 (compatible)"},
-    {"User-Agent": "curl/7.88.1"},
-]
+_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"}
 
 async def fetch_players():
-    timeout = aiohttp.ClientTimeout(total=TIMEOUT_SEC)
-    for headers in HEADERS_LIST:
-        try:
-            connector = aiohttp.TCPConnector(ssl=False)
-            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
-                async with session.get(BASE_URL, headers=headers) as r:
-                    if r.status == 200:
-                        return await r.json(content_type=None)
-        except Exception as e:
-            print(f"⚠️ {e}")
-    return None
-
-async def fetch_info():
-    timeout = aiohttp.ClientTimeout(total=TIMEOUT_SEC)
     try:
-        connector = aiohttp.TCPConnector(ssl=False)
-        async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
-            async with session.get(INFO_URL, headers=HEADERS_LIST[0]) as r:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=TIMEOUT_SEC),
+            connector=aiohttp.TCPConnector(ssl=False)
+        ) as s:
+            async with s.get(BASE_URL, headers=_HEADERS) as r:
                 if r.status == 200:
                     return await r.json(content_type=None)
     except Exception as e:
-        print(f"❌ {e}")
+        print(f"⚠️ players: {e}")
+    return None
+
+async def fetch_info():
+    try:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=TIMEOUT_SEC),
+            connector=aiohttp.TCPConnector(ssl=False)
+        ) as s:
+            async with s.get(INFO_URL, headers=_HEADERS) as r:
+                if r.status == 200:
+                    return await r.json(content_type=None)
+    except Exception as e:
+        print(f"⚠️ info: {e}")
     return None
 
 # ============================================================
-#  Modal بحث بـ ID
+#  Modals
 # ============================================================
 class SearchIDModal(discord.ui.Modal, title="🔍 بحث بـ Server ID"):
-    server_id = discord.ui.TextInput(
-        label="Server ID",
-        placeholder="مثال: 5",
-        min_length=1,
-        max_length=6
-    )
+    server_id = discord.ui.TextInput(label="Server ID", placeholder="مثال: 5", min_length=1, max_length=6)
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(thinking=True, ephemeral=True)
@@ -116,68 +105,48 @@ class SearchIDModal(discord.ui.Modal, title="🔍 بحث بـ Server ID"):
         except ValueError:
             await interaction.followup.send(embed=error_embed("❌ أدخل رقماً صحيحاً."), ephemeral=True)
             return
-        players_data = await fetch_players()
-        if players_data is None:
+        data = await fetch_players()
+        if data is None:
             await interaction.followup.send(embed=error_embed("❌ فشل جلب بيانات السيرفر."), ephemeral=True)
             return
-        target = next((p for p in players_data if p.get("id") == sid), None)
+        target = next((p for p in data if p.get("id") == sid), None)
         if not target:
             await interaction.followup.send(embed=error_embed(
-                f"❌ لا يوجد لاعب بالـ ID **{sid}**.\n⚡ المتصلون: **{len(players_data)}**"
+                f"❌ لا يوجد لاعب بالـ ID **{sid}**.\n⚡ المتصلون: **{len(data)}**"
             ), ephemeral=True)
             return
-        identifiers = target.get("identifiers", [])
-        steam = extract_identifier(identifiers, "steam:")
-        disc  = extract_identifier(identifiers, "discord:")
-        lic   = extract_identifier(identifiers, "license:")
+        ids = target.get("identifiers", [])
         embed = discord.Embed(title="SL6E BOT", color=COLOR_DEFAULT)
-        embed.set_author(name="🔍 ID Search")
-        embed.add_field(name="👤 Username",        value=f"`{target.get('name','Unknown')}`", inline=True)
-        embed.add_field(name="🆔 Server ID",       value=f"`{target.get('id','?')}`",         inline=True)
-        embed.add_field(name="📶 Ping",            value=f"`{target.get('ping','?')} ms`",    inline=True)
-        embed.add_field(name="🟠 Steam",           value=f"`{steam}`" if steam else "`—`",    inline=True)
-        embed.add_field(name="🔵 Discord",         value=f"`{disc}`"  if disc  else "`—`",    inline=True)
-        embed.add_field(name="🔑 License",         value=f"`{lic}`"   if lic   else "`—`",    inline=True)
-        embed.add_field(name="📋 All Identifiers", value=format_identifiers(identifiers),      inline=False)
+        embed.set_author(name="🔍 بحث بـ ID")
+        embed.add_field(name="👤 الاسم",   value=f"`{target.get('name','Unknown')}`", inline=True)
+        embed.add_field(name="🆔 ID",      value=f"`{target.get('id','?')}`",         inline=True)
+        embed.add_field(name="📶 Ping",    value=f"`{target.get('ping','?')} ms`",    inline=True)
+        embed.add_field(name="🟠 Steam",   value=f"`{extract_identifier(ids,'steam:')}`"   if extract_identifier(ids,'steam:')   else "`—`", inline=True)
+        embed.add_field(name="🔵 Discord", value=f"`{extract_identifier(ids,'discord:')}`" if extract_identifier(ids,'discord:') else "`—`", inline=True)
+        embed.add_field(name="🔑 License", value=f"`{extract_identifier(ids,'license:')}`" if extract_identifier(ids,'license:') else "`—`", inline=True)
+        embed.add_field(name="📋 المعرّفات", value=format_identifiers(ids), inline=False)
         embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
-        logo = make_logo_file()
-        if logo:
-            embed.set_thumbnail(url="attachment://logo.webp")
-            await interaction.followup.send(embed=embed, file=logo, ephemeral=True)
-        else:
-            await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
-# ============================================================
-#  Modal بحث بالاسم
-# ============================================================
 class SearchNameModal(discord.ui.Modal, title="🔎 بحث بالاسم"):
-    player_name = discord.ui.TextInput(
-        label="اسم اللاعب",
-        placeholder="اكتب الاسم أو جزء منه",
-        min_length=2,
-        max_length=50
-    )
+    player_name = discord.ui.TextInput(label="اسم اللاعب", placeholder="اكتب الاسم أو جزء منه", min_length=2, max_length=50)
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(thinking=True, ephemeral=True)
         name = self.player_name.value.strip()
-        players_data = await fetch_players()
-        if players_data is None:
+        data = await fetch_players()
+        if data is None:
             await interaction.followup.send(embed=error_embed("❌ فشل جلب بيانات السيرفر."), ephemeral=True)
             return
-        results = [p for p in players_data if name.lower() in p.get("name","").lower()]
+        results = [p for p in data if name.lower() in p.get("name","").lower()]
         if not results:
             await interaction.followup.send(embed=error_embed(f"❌ لم يُعثر على **\"{name}\"**."), ephemeral=True)
             return
-        truncated = len(results) > 20
-        results   = results[:20]
-        lines = "".join(
-            f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','?')}  ({p.get('ping','?')}ms)\n"
-            for p in results
-        )
+        show = results[:20]
+        lines = "".join(f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','?')}  ({p.get('ping','?')}ms)\n" for p in show)
         embed = discord.Embed(
             title="SL6E BOT",
-            description=f"**🔎 نتائج: \"{name}\"** — {len(results)} نتيجة" + ("\n⚠️ أول 20 فقط" if truncated else ""),
+            description=f"**🔎 نتائج: \"{name}\"** — {len(show)} نتيجة" + ("\n⚠️ أول 20 فقط" if len(results) > 20 else ""),
             color=COLOR_SUCCESS
         )
         embed.add_field(name="النتائج", value=f"```gml\n{lines}```", inline=False)
@@ -185,7 +154,7 @@ class SearchNameModal(discord.ui.Modal, title="🔎 بحث بالاسم"):
         await interaction.followup.send(embed=embed, ephemeral=True)
 
 # ============================================================
-#  لوحة التحكم View
+#  View الأزرار
 # ============================================================
 class PanelView(discord.ui.View):
     def __init__(self):
@@ -194,11 +163,11 @@ class PanelView(discord.ui.View):
     @discord.ui.button(label="🎮 اللاعبين", style=discord.ButtonStyle.primary, row=0)
     async def btn_players(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(thinking=True, ephemeral=True)
-        players_data = await fetch_players()
-        if players_data is None:
+        data = await fetch_players()
+        if data is None:
             await interaction.followup.send(embed=error_embed("❌ السيرفر غير متاح."), ephemeral=True)
             return
-        total = len(players_data)
+        total = len(data)
         embed = discord.Embed(
             title="SL6E BOT",
             description=f"**🎮 اللاعبون المتصلون — {total} لاعب**",
@@ -207,34 +176,31 @@ class PanelView(discord.ui.View):
         if total == 0:
             embed.description = "⚠️ لا يوجد لاعبون متصلون حالياً."
         else:
-            chunk = players_data[:25]
+            chunk = data[:25]
             lines = "".join(f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}\n" for p in chunk)
             embed.add_field(name=f"أول {len(chunk)} لاعب", value=f"```gml\n{lines}```", inline=False)
-            if total > 25:
-                embed.set_footer(text=f"⚡ {total - 25} لاعب إضافي")
-            else:
-                embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
+            embed.set_footer(text=f"⚡ {total-25} إضافي" if total > 25 else f"Server: {SERVER_IP}:{SERVER_PORT}")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     @discord.ui.button(label="📊 إحصائيات", style=discord.ButtonStyle.primary, row=0)
     async def btn_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(thinking=True, ephemeral=True)
-        players_data, info_data = await asyncio.gather(fetch_players(), fetch_info())
-        if players_data is None:
+        data, info = await asyncio.gather(fetch_players(), fetch_info())
+        if data is None:
             await interaction.followup.send(embed=error_embed("❌ السيرفر غير متاح."), ephemeral=True)
             return
-        total    = len(players_data)
-        vars_    = info_data.get("vars", {}) if info_data else {}
+        total    = len(data)
+        vars_    = info.get("vars", {}) if info else {}
         max_p    = vars_.get("sv_maxClients", "?")
-        srv_name = info_data.get("name", vars_.get("sv_hostname", "Unknown")) if info_data else "Unknown"
-        pings    = [p.get("ping", 0) for p in players_data if isinstance(p.get("ping"), int)]
-        avg_ping = round(sum(pings) / len(pings)) if pings else 0
+        srv      = info.get("name", vars_.get("sv_hostname","Unknown")) if info else "Unknown"
+        pings    = [p.get("ping",0) for p in data if isinstance(p.get("ping"),int)]
+        avg_ping = round(sum(pings)/len(pings)) if pings else 0
         embed = discord.Embed(title="SL6E BOT", description="**📊 إحصائيات السيرفر**", color=COLOR_DEFAULT)
-        embed.add_field(name="🖥️ السيرفر",     value=f"`{srv_name}`",                inline=False)
-        embed.add_field(name="🟢 الحالة",       value="أونلاين",                     inline=True)
-        embed.add_field(name="👥 اللاعبون",     value=f"`{total} / {max_p}`",        inline=True)
-        embed.add_field(name="📶 متوسط البينج", value=f"`{avg_ping} ms`",            inline=True)
-        embed.add_field(name="🌐 العنوان",      value=f"`{SERVER_IP}:{SERVER_PORT}`",inline=True)
+        embed.add_field(name="🖥️ السيرفر",     value=f"`{srv}`",                     inline=False)
+        embed.add_field(name="🟢 الحالة",       value="أونلاين",                      inline=True)
+        embed.add_field(name="👥 اللاعبون",     value=f"`{total} / {max_p}`",         inline=True)
+        embed.add_field(name="📶 متوسط البينج", value=f"`{avg_ping} ms`",             inline=True)
+        embed.add_field(name="🌐 العنوان",      value=f"`{SERVER_IP}:{SERVER_PORT}`", inline=True)
         embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -270,30 +236,19 @@ class FiveMBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
-        if GUILD_ID:
-            try:
-                guild = discord.Object(id=GUILD_ID)
-                self.tree.copy_global_to(guild=guild)
-                await self.tree.sync(guild=guild)
-                print(f"✅ مزامنة فورية: {GUILD_ID}")
-            except discord.Forbidden:
-                await self.tree.sync()
-                print("✅ مزامنة عالمية.")
-        else:
-            await self.tree.sync()
-            print("✅ مزامنة عالمية.")
+        guild = discord.Object(id=GUILD_ID)
+        self.tree.copy_global_to(guild=guild)
+        await self.tree.sync(guild=guild)
+        print(f"✅ مزامنة: {GUILD_ID}")
 
 bot = FiveMBot()
 
 @bot.event
 async def on_ready():
     await bot.change_presence(
-        activity=discord.Activity(
-            type=discord.ActivityType.watching,
-            name="BY SL6E & ABO 5LOOD"
-        )
+        activity=discord.Activity(type=discord.ActivityType.watching, name="BY SL6E & ABO 5LOOD")
     )
-    print(f"✅ البوت شغال: {bot.user.name}  |  {SERVER_IP}:{SERVER_PORT}")
+    print(f"✅ {bot.user.name}  |  {SERVER_IP}:{SERVER_PORT}")
 
 # ============================================================
 #  /لوحة
@@ -305,9 +260,9 @@ async def cmd_panel(interaction: discord.Interaction):
         description="**🎮 لوحة تحكم السيرفر**",
         color=COLOR_DEFAULT
     )
-    logo = make_logo_file()
+    embed.set_image(url="attachment://logo.webp")   # ← الصورة في النص، الأزرار تحتها
+    logo = get_logo()
     if logo:
-        embed.set_image(url="attachment://logo.webp")
         await interaction.response.send_message(embed=embed, view=PanelView(), file=logo, ephemeral=True)
     else:
         await interaction.response.send_message(embed=embed, view=PanelView(), ephemeral=True)
@@ -317,4 +272,4 @@ TOKEN = os.environ.get("DISCORD_TOKEN")
 if TOKEN:
     bot.run(TOKEN)
 else:
-    print("❌ DISCORD_TOKEN غير موجود")
+    print("❌ DISCORD_TOKEN غير موجود — حط التوكن في متغير DISCORD_TOKEN")
