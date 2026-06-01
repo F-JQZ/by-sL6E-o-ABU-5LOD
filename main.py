@@ -17,10 +17,9 @@ GUILD_ID    = 1510735912185630812
 BASE_URL = f"http://{SERVER_IP}:{SERVER_PORT}/players.json"
 INFO_URL = f"http://{SERVER_IP}:{SERVER_PORT}/info.json"
 
-# صورة FiveM بديلة (من CDN رسمي)
 FIVEM_THUMBNAIL  = "https://cdn.discordapp.com/emojis/1060951257456812082.png"
-PLAYERS_PER_FIELD = 25   # عدد اللاعبين في كل حقل داخل الـ embed
-TIMEOUT_SEC       = 10   # رفعنا الـ timeout
+PLAYERS_PER_FIELD = 25
+TIMEOUT_SEC       = 10
 
 COLOR_DEFAULT = 0x5865F2
 COLOR_ERROR   = 0xED4245
@@ -63,7 +62,7 @@ def error_embed(message: str) -> discord.Embed:
     return embed
 
 # ============================================================
-#  جلب البيانات — مع عدة محاولات وهيدرات متعددة
+#  جلب البيانات
 # ============================================================
 HEADERS_LIST = [
     {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"},
@@ -73,13 +72,12 @@ HEADERS_LIST = [
 
 async def fetch_players():
     timeout = aiohttp.ClientTimeout(total=TIMEOUT_SEC)
-    # نجرب أكثر من User-Agent لتفادي الحجب
     for headers in HEADERS_LIST:
         try:
             connector = aiohttp.TCPConnector(ssl=False)
             async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
                 async with session.get(BASE_URL, headers=headers) as r:
-                    if r.status == 600:
+                    if r.status == 200:
                         return await r.json(content_type=None)
         except Exception as e:
             print(f"⚠️ محاولة فاشلة ({headers['User-Agent'][:20]}): {e}")
@@ -98,20 +96,12 @@ async def fetch_info():
     return None
 
 # ============================================================
-#  بناء embed القائمة الكاملة (بدون pagination — كل شيء دفعة وحدة)
+#  بناء embed القائمة الكاملة
 # ============================================================
 def build_full_players_embed(players_data: list) -> list[discord.Embed]:
-    """
-    يقسم اللاعبين على embeds متعددة (كل embed يحتوي حتى 5 حقول × 25 لاعب = 125 لاعب).
-    Discord يسمح بإرسال 10 embeds في رسالة وحدة.
-    """
     total = len(players_data)
     embeds = []
-
-    # قسّم اللاعبين إلى مجموعات
     chunks = [players_data[i:i+PLAYERS_PER_FIELD] for i in range(0, total, PLAYERS_PER_FIELD)]
-
-    # كل embed يحتوي على 5 حقول كحد أقصى (Discord limit = 25 field per embed)
     FIELDS_PER_EMBED = 5
     embed_chunks = [chunks[i:i+FIELDS_PER_EMBED] for i in range(0, len(chunks), FIELDS_PER_EMBED)]
 
@@ -182,9 +172,9 @@ async def on_ready():
     print(f"✅ البوت شغال: {bot.user.name}  |  {SERVER_IP}:{SERVER_PORT}")
 
 # ============================================================
-#  /players — كل اللاعبين مرة وحدة بدون أزرار
+#  /playerstrg — قائمة كاملة لجميع اللاعبين
 # ============================================================
-@bot.tree.command(name="playersTRG", description="عرض قائمة كاملة لجميع اللاعبين المتصلين")
+@bot.tree.command(name="playerstrg", description="عرض قائمة كاملة لجميع اللاعبين المتصلين")
 async def cmd_players(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
 
@@ -205,14 +195,12 @@ async def cmd_players(interaction: discord.Interaction):
         return
 
     embeds = build_full_players_embed(players_data)
-
-    # Discord يسمح بإرسال 10 embeds بحد أقصى في رسالة وحدة
     await interaction.followup.send(embeds=embeds[:10])
 
 # ============================================================
-#  /id
+#  /idtrg — البحث عن لاعب بالـ ID
 # ============================================================
-@bot.tree.command(name="idTRG", description="البحث عن لاعب داخل السيرفر عبر الـ Server ID")
+@bot.tree.command(name="idtrg", description="البحث عن لاعب داخل السيرفر عبر الـ Server ID")
 @app_commands.describe(server_id="الـ ID الخاص باللاعب داخل السيرفر")
 async def cmd_id(interaction: discord.Interaction, server_id: int):
     await interaction.response.defer(thinking=True)
@@ -259,9 +247,9 @@ async def cmd_id(interaction: discord.Interaction, server_id: int):
     await interaction.followup.send(embed=embed)
 
 # ============================================================
-#  /search
+#  /searchtrg — البحث عن لاعب بالاسم
 # ============================================================
-@bot.tree.command(name="searchTRG", description="البحث عن لاعب بالاسم")
+@bot.tree.command(name="searchtrg", description="البحث عن لاعب بالاسم")
 @app_commands.describe(name="اسم اللاعب أو جزء منه")
 async def cmd_search(interaction: discord.Interaction, name: str):
     await interaction.response.defer(thinking=True)
@@ -282,50 +270,22 @@ async def cmd_search(interaction: discord.Interaction, name: str):
 
     truncated = len(results) > 20
     results   = results[:20]
-    lines = "".join(f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}  (ping: {p.get('ping','?')}ms)\n" for p in results)
-    note  = "\n⚠️ تم عرض أول 20 نتيجة فقط." if truncated else ""
+    lines = "".join(
+        f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}  (ping: {p.get('ping','?')}ms)\n"
+        for p in results
+    )
+    note = "\n⚠️ تم عرض أول 20 نتيجة فقط." if truncated else ""
 
     embed = discord.Embed(
         title="FiveM Bot",
-        description=f"**نتائج البحث عن: \"{name}\"** — {len(results)} نتيجة{note}",
-        color=COLOR_SUCCESS
+        description=f"**نتائج البحث عن:** `{name}`{note}",
+        color=COLOR_DEFAULT
     )
-    embed.set_author(name="Name Search")
-    embed.add_field(name="Results", value=f"```gml\n{lines}```", inline=False)
+    embed.add_field(name=f"النتائج ({len(results)})", value=f"```gml\n{lines}```", inline=False)
     embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
     await interaction.followup.send(embed=embed)
 
 # ============================================================
-#  /stats
+#  تشغيل البوت
 # ============================================================
-@bot.tree.command(name="stats", description="إحصائيات السيرفر العامة")
-async def cmd_stats(interaction: discord.Interaction):
-    await interaction.response.defer(thinking=True)
-
-    players_data, info_data = await asyncio.gather(fetch_players(), fetch_info())
-    if players_data is None:
-        await interaction.followup.send(embed=error_embed("❌ السيرفر غير متاح حالياً."))
-        return
-
-    total_players = len(players_data)
-    max_players   = info_data.get("vars", {}).get("sv_maxClients", "?") if info_data else "?"
-    hostname      = info_data.get("vars", {}).get("sv_hostname", "Unknown") if info_data else "Unknown"
-    server_name   = info_data.get("name", hostname) if info_data else hostname
-    pings    = [p.get("ping", 0) for p in players_data if isinstance(p.get("ping"), int)]
-    avg_ping = round(sum(pings) / len(pings)) if pings else 0
-
-    embed = discord.Embed(title="FiveM Bot", description="**Server Statistics**", color=COLOR_DEFAULT)
-    embed.set_author(name="Server Stats")
-    embed.add_field(name="🖥️ Server Name", value=f"`{server_name}`",                  inline=False)
-    embed.add_field(name="👥 Players",     value=f"`{total_players} / {max_players}`", inline=True)
-    embed.add_field(name="📶 Avg Ping",    value=f"`{avg_ping} ms`",                   inline=True)
-    embed.add_field(name="🌐 Address",     value=f"`{SERVER_IP}:{SERVER_PORT}`",        inline=True)
-    embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
-    await interaction.followup.send(embed=embed)
-
-# ============================================================
-TOKEN = os.environ.get("DISCORD_TOKEN")
-if TOKEN:
-    bot.run(TOKEN)
-else:
-    print("❌ خطأ: DISCORD_TOKEN غير موجود!")
+bot.run(os.getenv("DISCORD_TOKEN"))
