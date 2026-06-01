@@ -184,7 +184,7 @@ async def on_ready():
 # ============================================================
 #  /players — كل اللاعبين مرة وحدة بدون أزرار
 # ============================================================
-@bot.tree.command(name="players TRG ", description="عرض قائمة كاملة لجميع اللاعبين المتصلين")
+@bot.tree.command(name="playersTRG", description="عرض قائمة كاملة لجميع اللاعبين المتصلين")
 async def cmd_players(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
 
@@ -212,7 +212,7 @@ async def cmd_players(interaction: discord.Interaction):
 # ============================================================
 #  /id
 # ============================================================
-@bot.tree.command(name="id TRG ", description="البحث عن لاعب داخل السيرفر عبر الـ Server ID")
+@bot.tree.command(name="idTRG", description="البحث عن لاعب داخل السيرفر عبر الـ Server ID")
 @app_commands.describe(server_id="الـ ID الخاص باللاعب داخل السيرفر")
 async def cmd_id(interaction: discord.Interaction, server_id: int):
     await interaction.response.defer(thinking=True)
@@ -261,7 +261,7 @@ async def cmd_id(interaction: discord.Interaction, server_id: int):
 # ============================================================
 #  /search
 # ============================================================
-@bot.tree.command(name="search TRG ", description="البحث عن لاعب بالاسم")
+@bot.tree.command(name="searchTRG", description="البحث عن لاعب بالاسم")
 @app_commands.describe(name="اسم اللاعب أو جزء منه")
 async def cmd_search(interaction: discord.Interaction, name: str):
     await interaction.response.defer(thinking=True)
