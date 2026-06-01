@@ -8,7 +8,7 @@ import math
 import asyncio
 
 # ============================================================
-#  إعدادات السيرفر الثابتة - الـ IP المطلوب فقط
+#  إعدادات السيرفر الثابتة (الآيبي حقك فقط بدون تغيير)
 # ============================================================
 SERVER_IP   = "194.45.197.143"
 SERVER_PORT = "30120"
@@ -18,7 +18,7 @@ BASE_URL        = f"http://{SERVER_IP}:{SERVER_PORT}/players.json"
 INFO_URL        = f"http://{SERVER_IP}:{SERVER_PORT}/info.json"
 FIVEM_THUMBNAIL = "https://i.imgur.com/F4LkFHJ.png"
 PLAYERS_PER_PAGE = 20
-TIMEOUT_SEC      = 6  # زيادة الوقت لتتحمل الاستضافة الضغط العالي (1500 لاعب)
+TIMEOUT_SEC      = 6  # وقت كافي لجلب بيانات الـ 1500 لاعب كاملة
 
 COLOR_DEFAULT = 0x5865F2
 COLOR_ERROR   = 0xED4245
@@ -62,16 +62,22 @@ def error_embed(message: str) -> discord.Embed:
     return embed
 
 # ============================================================
-#  تخطي حماية السيرفرات الضخمة (تعديل كامل للهيدرز)
+#  تخطي الحماية المتقدمة (محاكاة بصمة متصفح كاملة)
 # ============================================================
 async def fetch_players():
-    # الهيدرز هذي تجعل جدار حماية السيرفر الـ 1500 يظن أن الطلب جاي من متصفح حقيقي آمن
+    # هيدرز ومحاكاة متقدمة جداً تجبر الاستضافة على فك الحظر وظن أن البوت متصفح حقيقي
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
-        "Origin": "https://cfx.re",
-        "Referer": "https://cfx.re/"
+        "Accept-Encoding": "gzip, deflate",
+        "Connection": "keep-alive",
+        "Sec-Ch-Ua": '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "cross-site"
     }
     timeout = aiohttp.ClientTimeout(total=TIMEOUT_SEC)
     async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -79,8 +85,9 @@ async def fetch_players():
             async with session.get(BASE_URL, headers=headers) as r:
                 if r.status == 200:
                     return await r.json(content_type=None)
-                elif r.status == 403 or r.status == 404:
-                    # محاولة بديلة عبر البورت الافتراضي للموقع إذا كان السيرفر يحول الطلبات
+                
+                # حل بديل ذكي: إذا الاستضافة مسوية Reverse Proxy على المنفذ العادي
+                elif r.status in [403, 404, 502]:
                     alt_url = f"http://{SERVER_IP}/players.json"
                     async with session.get(alt_url, headers=headers) as alt_r:
                         if alt_r.status == 200:
@@ -91,11 +98,13 @@ async def fetch_players():
 
 async def fetch_info():
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
-        "Origin": "https://cfx.re",
-        "Referer": "https://cfx.re/"
+        "Accept-Encoding": "gzip, deflate",
+        "Connection": "keep-alive",
+        "Sec-Ch-Ua": '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
+        "Sec-Ch-Ua-Platform": '"Windows"'
     }
     timeout = aiohttp.ClientTimeout(total=TIMEOUT_SEC)
     async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -103,7 +112,7 @@ async def fetch_info():
             async with session.get(INFO_URL, headers=headers) as r:
                 if r.status == 200:
                     return await r.json(content_type=None)
-                elif r.status == 403 or r.status == 404:
+                elif r.status in [403, 404, 502]:
                     alt_url = f"http://{SERVER_IP}/info.json"
                     async with session.get(alt_url, headers=headers) as alt_r:
                         if alt_r.status == 200:
@@ -234,42 +243,34 @@ async def on_ready():
 
 
 # ============================================================
-#  /players
+#  الأوامر الحية
 # ============================================================
 @bot.tree.command(name="players", description="عرض قائمة اللاعبين مع أزرار التنقل")
 async def cmd_players(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
-
     players_data = await fetch_players()
 
     if players_data is None:
         await interaction.followup.send(embed=error_embed(
-            "❌ **فشل في الاتصال بالسيرفر**\nالاستضافة ترفض طلبات البوت المباشرة. تأكد من فتح المنفذ الخارجي للسيرفر."
+            "❌ **فشل في الاتصال بالسيرفر**\nالاستضافة تمنع طلبات البوت المباشرة لحماية السيرفر الـ 1500."
         ))
         return
 
     total_players = len(players_data)
-
     if total_players == 0:
         await interaction.followup.send(embed=error_embed("⚠️ لا يوجد لاعبون متصلون حالياً."))
         return
 
     total_pages = math.ceil(total_players / PLAYERS_PER_PAGE)
-
     embed = build_players_embed(players_data, 1, total_pages)
     view  = PlayersView(players_data, 1, total_pages, interaction.user.id)
-
     await interaction.followup.send(embed=embed, view=view)
 
 
-# ============================================================
-#  /id
-# ============================================================
 @bot.tree.command(name="id", description="البحث عن لاعب داخل السيرفر عبر الـ Server ID")
 @app_commands.describe(server_id="الـ ID الخاص باللاعب داخل السيرفر")
 async def cmd_id(interaction: discord.Interaction, server_id: int):
     await interaction.response.defer(thinking=True)
-
     if server_id <= 0:
         await interaction.followup.send(embed=error_embed("❌ الـ ID يجب أن يكون رقماً موجباً."))
         return
@@ -280,12 +281,8 @@ async def cmd_id(interaction: discord.Interaction, server_id: int):
         return
 
     target = next((p for p in players_data if p.get("id") == server_id), None)
-
     if not target:
-        await interaction.followup.send(embed=error_embed(
-            f"❌ لا يوجد لاعب بالـ ID **{server_id}** متصل حالياً.\n"
-            f"⚡ إجمالي المتصلين: **{len(players_data)}** لاعب"
-        ))
+        await interaction.followup.send(embed=error_embed(f"❌ لا يوجد لاعب بالـ ID **{server_id}** متصل حالياً."))
         return
 
     identifiers = target.get("identifiers", [])
@@ -293,19 +290,11 @@ async def cmd_id(interaction: discord.Interaction, server_id: int):
     discord_raw = extract_identifier(identifiers, "discord:")
     license_raw = extract_identifier(identifiers, "license:")
 
-    steam_value   = f"`{steam_raw}`"                        if steam_raw   else "`غير مرتبط`"
-    discord_value = f"<@{discord_raw}> (`{discord_raw}`)"        if discord_raw else "`غير مرتبط`"
-    license_value = f"`{license_raw}`"                            if license_raw else "`—`"
+    steam_value   = f"`{steam_raw}`" if steam_raw else "`غير مرتبط`"
+    discord_value = f"<@{discord_raw}> (`{discord_raw}`)" if discord_raw else "`غير مرتبط`"
+    license_value = f"`{license_raw}`" if license_raw else "`—`"
 
-    embed = discord.Embed(
-        title="FiveM Bot",
-        description=(
-            "Have feedback or suggestions? Fill out the "
-            "[FiveM Bot feedback form](https://fivem.net) "
-            "and help improve the service for all."
-        ),
-        color=COLOR_DEFAULT
-    )
+    embed = discord.Embed(title="FiveM Bot", color=COLOR_DEFAULT)
     embed.set_author(name="ID Search")
     embed.set_thumbnail(url=FIVEM_THUMBNAIL)
     embed.add_field(name="Username",   value=f"`{target.get('name','Unknown')}`", inline=True)
@@ -319,14 +308,10 @@ async def cmd_id(interaction: discord.Interaction, server_id: int):
     await interaction.followup.send(embed=embed)
 
 
-# ============================================================
-#  /search
-# ============================================================
 @bot.tree.command(name="search", description="البحث عن لاعب بالاسم")
 @app_commands.describe(name="اسم اللاعب أو جزء منه")
 async def cmd_search(interaction: discord.Interaction, name: str):
     await interaction.response.defer(thinking=True)
-
     if len(name.strip()) < 2:
         await interaction.followup.send(embed=error_embed("❌ اكتب على الأقل **حرفين** للبحث."))
         return
@@ -340,15 +325,10 @@ async def cmd_search(interaction: discord.Interaction, name: str):
     results = [p for p in players_data if query in p.get("name", "").lower()]
 
     if not results:
-        await interaction.followup.send(embed=error_embed(
-            f"❌ لم يُعثر على لاعب يحتوي اسمه على **\"{name}\"**."
-        ))
+        await interaction.followup.send(embed=error_embed(f"❌ لم يُعثر على لاعب يحتوي اسمه على **\"{name}\"**."))
         return
 
-    MAX_RESULTS = 15
-    truncated   = len(results) > MAX_RESULTS
-    results     = results[:MAX_RESULTS]
-
+    results = results[:15]
     lines = ""
     for p in results:
         pid   = str(p.get("id","?")).ljust(4)
@@ -356,13 +336,7 @@ async def cmd_search(interaction: discord.Interaction, name: str):
         ping  = p.get("ping","?")
         lines += f"[{pid}] {pname}  (ping: {ping}ms)\n"
 
-    note = f"\n⚠️ تم عرض أول {MAX_RESULTS} نتيجة فقط." if truncated else ""
-
-    embed = discord.Embed(
-        title="FiveM Bot",
-        description=f"**نتائج البحث عن: \"{name}\"** — {len(results)} نتيجة{note}",
-        color=COLOR_SUCCESS
-    )
+    embed = discord.Embed(title="FiveM Bot", description=f"**نتائج البحث عن: \"{name}\"**", color=COLOR_SUCCESS)
     embed.set_author(name="Name Search")
     embed.set_thumbnail(url=FIVEM_THUMBNAIL)
     embed.add_field(name="Results", value=f"```gml\n{lines}```", inline=False)
@@ -370,13 +344,9 @@ async def cmd_search(interaction: discord.Interaction, name: str):
     await interaction.followup.send(embed=embed)
 
 
-# ============================================================
-#  /stats
-# ============================================================
 @bot.tree.command(name="stats", description="إحصائيات السيرفر العامة")
 async def cmd_stats(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
-
     players_data, info_data = await asyncio.gather(fetch_players(), fetch_info())
 
     if players_data is None:
@@ -384,7 +354,6 @@ async def cmd_stats(interaction: discord.Interaction):
         return
 
     total_players = len(players_data)
-    
     max_players = "?"
     server_name = "Unknown Server"
     
@@ -410,7 +379,7 @@ async def cmd_stats(interaction: discord.Interaction):
 
 
 # ============================================================
-#  تشغيل البوت عبر التوكن
+#  تشغيل البوت
 # ============================================================
 TOKEN = os.environ.get("DISCORD_TOKEN")
 if TOKEN:
