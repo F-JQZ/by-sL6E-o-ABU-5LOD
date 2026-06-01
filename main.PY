@@ -2,21 +2,20 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import aiohttp
-import json
 import os
 import math
 import asyncio
 
 # ============================================================
-#  إعدادات السيرفر الثابتة (بناءً على طلبك)
+#  إعدادات السيرفر
 # ============================================================
-SERVER_IP   = "194.45.197.143"
-SERVER_PORT = "30120"
-GUILD_ID    = 1510735912185630812   # آيدي سيرفر الديسكورد الخاص بك
+SERVER_IP        = "194.45.197.143"
+SERVER_PORT      = "30120"
+GUILD_ID         = 1510735912185630812
 
-BASE_URL        = f"http://{SERVER_IP}:{SERVER_PORT}/players.json"
-INFO_URL        = f"http://{SERVER_IP}:{SERVER_PORT}/info.json"
-FIVEM_THUMBNAIL = "https://i.imgur.com/F4LkFHJ.png"
+BASE_URL         = f"http://{SERVER_IP}:{SERVER_PORT}/players.json"
+INFO_URL         = f"http://{SERVER_IP}:{SERVER_PORT}/info.json"
+FIVEM_THUMBNAIL  = "https://i.imgur.com/F4LkFHJ.png"
 PLAYERS_PER_PAGE = 20
 TIMEOUT_SEC      = 5
 
@@ -25,15 +24,15 @@ COLOR_ERROR   = 0xED4245
 COLOR_SUCCESS = 0x57F287
 
 # ============================================================
-#  مساعدات التنسيق واقتطاع المعرفات
+#  مساعدات
 # ============================================================
-def extract_identifier(identifiers: list, prefix: str):
+def extract_identifier(identifiers, prefix):
     for ident in identifiers:
         if ident.startswith(prefix):
             return ident.replace(prefix, "")
     return None
 
-def format_identifiers(identifiers: list) -> str:
+def format_identifiers(identifiers):
     lines = []
     mapping = {
         "steam:"   : "🟠 Steam",
@@ -55,35 +54,29 @@ def format_identifiers(identifiers: list) -> str:
             lines.append(f"🔹 `{ident}`")
     return "\n".join(lines) if lines else "لا توجد معرّفات"
 
-def error_embed(message: str) -> discord.Embed:
+def error_embed(message):
     embed = discord.Embed(title="FiveM Bot", description=message, color=COLOR_ERROR)
     embed.set_thumbnail(url=FIVEM_THUMBNAIL)
     embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
     return embed
 
 # ============================================================
-#  جلب البيانات من السيرفر
+#  جلب البيانات
 # ============================================================
 async def fetch_players():
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json"
-    }
+    headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
     timeout = aiohttp.ClientTimeout(total=TIMEOUT_SEC)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         try:
             async with session.get(BASE_URL, headers=headers) as r:
-                if r.status == 200:
+                if r.status == 1500:
                     return await r.json(content_type=None)
         except Exception as e:
             print(f"❌ fetch_players error: {e}")
     return None
 
 async def fetch_info():
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json"
-    }
+    headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
     timeout = aiohttp.ClientTimeout(total=TIMEOUT_SEC)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         try:
@@ -95,29 +88,24 @@ async def fetch_info():
     return None
 
 # ============================================================
-#  بناء قائمة اللاعبين والتنقل
+#  embed + View للاعبين
 # ============================================================
-def build_players_embed(players_data: list, page: int, total_pages: int) -> discord.Embed:
-    total_players = len(players_data)
+def build_players_embed(players_data, page, total_pages):
+    total = len(players_data)
     start = (page - 1) * PLAYERS_PER_PAGE
-    page_players = players_data[start: start + PLAYERS_PER_PAGE]
+    chunk = players_data[start: start + PLAYERS_PER_PAGE]
 
     lines = ""
-    for p in page_players:
+    for p in chunk:
         pid  = str(p.get("id", "?")).ljust(4)
         name = p.get("name", "Unknown")
         lines += f"[{pid}] {name}\n"
-
     if not lines:
         lines = "لا يوجد لاعبين في هذه الصفحة."
 
     embed = discord.Embed(
         title="FiveM Bot",
-        description=(
-            "Become a **patron** today to get the benefits of **FiveM Bot Pro**.\n"
-            f"Learn more [here](https://fivem.net).\n\n"
-            f"**Player List • TOTAL: {total_players} players • PAGE: {page}/{total_pages}**"
-        ),
+        description=f"**قائمة اللاعبين • المجموع: {total} • الصفحة: {page}/{total_pages}**",
         color=COLOR_DEFAULT
     )
     embed.set_thumbnail(url=FIVEM_THUMBNAIL)
@@ -126,12 +114,12 @@ def build_players_embed(players_data: list, page: int, total_pages: int) -> disc
     return embed
 
 class PlayersView(discord.ui.View):
-    def __init__(self, players_data: list, page: int, total_pages: int, requester_id: int):
+    def __init__(self, players_data, page, total_pages, requester_id):
         super().__init__(timeout=120)
-        self.players_data  = players_data
-        self.page          = page
-        self.total_pages   = total_pages
-        self.requester_id  = requester_id
+        self.players_data = players_data
+        self.page         = page
+        self.total_pages  = total_pages
+        self.requester_id = requester_id
         self._update_buttons()
 
     def _update_buttons(self):
@@ -141,39 +129,41 @@ class PlayersView(discord.ui.View):
         self.last_btn.disabled  = self.page >= self.total_pages
         self.page_label.label   = f"  {self.page} / {self.total_pages}  "
 
-    async def _check(self, interaction: discord.Interaction) -> bool:
+    async def _check(self, interaction):
         if interaction.user.id != self.requester_id:
             await interaction.response.send_message("❌ هذه الأزرار للشخص اللي استخدم الأمر فقط.", ephemeral=True)
             return False
         return True
 
-    async def _go(self, interaction: discord.Interaction, new_page: int):
+    async def _go(self, interaction, new_page):
         self.page = new_page
         self._update_buttons()
-        embed = build_players_embed(self.players_data, self.page, self.total_pages)
-        await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.response.edit_message(
+            embed=build_players_embed(self.players_data, self.page, self.total_pages),
+            view=self
+        )
 
     @discord.ui.button(label="⏮", style=discord.ButtonStyle.secondary)
-    async def first_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def first_btn(self, interaction, button):
         if not await self._check(interaction): return
         await self._go(interaction, 1)
 
     @discord.ui.button(label="◀", style=discord.ButtonStyle.primary)
-    async def prev_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def prev_btn(self, interaction, button):
         if not await self._check(interaction): return
         await self._go(interaction, self.page - 1)
 
     @discord.ui.button(label="  1 / 1  ", style=discord.ButtonStyle.secondary, disabled=True)
-    async def page_label(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def page_label(self, interaction, button):
         pass
 
     @discord.ui.button(label="▶", style=discord.ButtonStyle.primary)
-    async def next_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def next_btn(self, interaction, button):
         if not await self._check(interaction): return
         await self._go(interaction, self.page + 1)
 
     @discord.ui.button(label="⏭", style=discord.ButtonStyle.secondary)
-    async def last_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def last_btn(self, interaction, button):
         if not await self._check(interaction): return
         await self._go(interaction, self.total_pages)
 
@@ -182,7 +172,7 @@ class PlayersView(discord.ui.View):
             item.disabled = True
 
 # ============================================================
-#  تشغيل وتهيئة البوت الجديد
+#  البوت
 # ============================================================
 class FiveMBot(commands.Bot):
     def __init__(self):
@@ -195,155 +185,174 @@ class FiveMBot(commands.Bot):
         guild = discord.Object(id=GUILD_ID)
         self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
-        print("✅ تم مزامنة الأوامر بنجاح للبوت الجديد.")
+        print("✅ تم مزامنة الأوامر.")
 
 bot = FiveMBot()
 
 @bot.event
 async def on_ready():
     await bot.change_presence(
-        activity=discord.Activity(
-            type=discord.ActivityType.watching,
-            name="BY ABO 5LOOD & SL6E"
-        )
+        activity=discord.Activity(type=discord.ActivityType.watching, name="BY ABO 5LOOD & SL6E")
     )
-    print(f"✅ البوت الجديد شغال الآن باسم: {bot.user.name}")
+    print(f"✅ البوت شغال: {bot.user.name} ({bot.user.id})")
 
 # ============================================================
-#  الأوامر الحية (/players , /id , /search , /stats)
+#  /players
 # ============================================================
 @bot.tree.command(name="players", description="عرض قائمة اللاعبين مع أزرار التنقل")
 async def cmd_players(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
-    players_data = await fetch_players()
+    data = await fetch_players()
+    if data is None:
+        await interaction.followup.send(embed=error_embed("❌ فشل الاتصال بالسيرفر.")); return
+    if len(data) == 0:
+        await interaction.followup.send(embed=error_embed("⚠️ لا يوجد لاعبون متصلون.")); return
 
-    if players_data is None:
-        await interaction.followup.send(embed=error_embed("❌ فشل في الاتصال بالسيرفر. تأكد من عمل السيرفر والآيبي الصحيح."))
-        return
+    total_pages = math.ceil(len(data) / PLAYERS_PER_PAGE)
+    await interaction.followup.send(
+        embed=build_players_embed(data, 1, total_pages),
+        view=PlayersView(data, 1, total_pages, interaction.user.id)
+    )
 
-    total_players = len(players_data)
-    if total_players == 0:
-        await interaction.followup.send(embed=error_embed("⚠️ لا يوجد لاعبون متصلون حالياً."))
-        return
-
-    total_pages = math.ceil(total_players / PLAYERS_PER_PAGE)
-    embed = build_players_embed(players_data, 1, total_pages)
-    view  = PlayersView(players_data, 1, total_pages, interaction.user.id)
-    await interaction.followup.send(embed=embed, view=view)
-
-@bot.tree.command(name="id", description="البحث عن لاعب داخل السيرفر عبر الـ Server ID")
+# ============================================================
+#  /id
+# ============================================================
+@bot.tree.command(name="id", description="البحث عن لاعب عبر الـ Server ID")
 @app_commands.describe(server_id="الـ ID الخاص باللاعب داخل السيرفر")
 async def cmd_id(interaction: discord.Interaction, server_id: int):
     await interaction.response.defer(thinking=True)
     if server_id <= 0:
-        await interaction.followup.send(embed=error_embed("❌ الـ ID يجب أن يكون رقماً موجباً."))
-        return
+        await interaction.followup.send(embed=error_embed("❌ الـ ID يجب أن يكون رقماً موجباً.")); return
 
-    players_data = await fetch_players()
-    if players_data is None:
-        await interaction.followup.send(embed=error_embed("❌ فشل جلب بيانات السيرفر."))
-        return
+    data = await fetch_players()
+    if data is None:
+        await interaction.followup.send(embed=error_embed("❌ فشل جلب بيانات السيرفر.")); return
 
-    target = next((p for p in players_data if p.get("id") == server_id), None)
+    target = next((p for p in data if p.get("id") == server_id), None)
     if not target:
-        await interaction.followup.send(embed=error_embed(f"❌ لا يوجد لاعب بالـ ID **{server_id}** متصل حالياً."))
-        return
+        await interaction.followup.send(embed=error_embed(f"❌ لا يوجد لاعب بالـ ID **{server_id}**.")); return
 
-    identifiers = target.get("identifiers", [])
-    steam_raw   = extract_identifier(identifiers, "steam:")
-    discord_raw = extract_identifier(identifiers, "discord:")
-    license_raw = extract_identifier(identifiers, "license:")
-
-    steam_value   = f"`{steam_raw}`" if steam_raw else "`غير مرتبط`"
-    discord_value = f"<@{discord_raw}> (`{discord_raw}`)" if discord_raw else "`غير مرتبط`"
-    license_value = f"`{license_raw}`" if license_raw else "`—`"
+    ids          = target.get("identifiers", [])
+    steam_raw    = extract_identifier(ids, "steam:")
+    discord_raw  = extract_identifier(ids, "discord:")
+    license_raw  = extract_identifier(ids, "license:")
 
     embed = discord.Embed(title="FiveM Bot", color=COLOR_DEFAULT)
     embed.set_author(name="ID Search")
     embed.set_thumbnail(url=FIVEM_THUMBNAIL)
-    embed.add_field(name="Username",   value=f"`{target.get('name','Unknown')}`", inline=True)
-    embed.add_field(name="Server ID",  value=f"`{target.get('id','?')}`",         inline=True)
-    embed.add_field(name="Ping",       value=f"`{target.get('ping','?')} ms`",    inline=True)
-    embed.add_field(name="🟠 Steam",   value=steam_value,                          inline=True)
-    embed.add_field(name="🔵 Discord", value=discord_value,                        inline=True)
-    embed.add_field(name="🔑 License", value=license_value,                        inline=True)
-    embed.add_field(name="📋 All Identifiers", value=format_identifiers(identifiers), inline=False)
+    embed.add_field(name="Username",   value=f"`{target.get('name','Unknown')}`",                                inline=True)
+    embed.add_field(name="Server ID",  value=f"`{target.get('id','?')}`",                                        inline=True)
+    embed.add_field(name="Ping",       value=f"`{target.get('ping','?')} ms`",                                   inline=True)
+    embed.add_field(name="🟠 Steam",   value=f"`{steam_raw}`"   if steam_raw   else "`غير مرتبط`",              inline=True)
+    embed.add_field(name="🔵 Discord", value=f"<@{discord_raw}>" if discord_raw else "`غير مرتبط`",             inline=True)
+    embed.add_field(name="🔑 License", value=f"`{license_raw}`" if license_raw else "`—`",                       inline=True)
+    embed.add_field(name="📋 All Identifiers", value=format_identifiers(ids), inline=False)
     embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
     await interaction.followup.send(embed=embed)
 
+# ============================================================
+#  /search
+# ============================================================
 @bot.tree.command(name="search", description="البحث عن لاعب بالاسم")
 @app_commands.describe(name="اسم اللاعب أو جزء منه")
 async def cmd_search(interaction: discord.Interaction, name: str):
     await interaction.response.defer(thinking=True)
     if len(name.strip()) < 2:
-        await interaction.followup.send(embed=error_embed("❌ اكتب على الأقل **حرفين** للبحث."))
-        return
+        await interaction.followup.send(embed=error_embed("❌ اكتب على الأقل **حرفين**.")); return
 
-    players_data = await fetch_players()
-    if players_data is None:
-        await interaction.followup.send(embed=error_embed("❌ فشل جلب بيانات السيرفر."))
-        return
+    data = await fetch_players()
+    if data is None:
+        await interaction.followup.send(embed=error_embed("❌ فشل جلب بيانات السيرفر.")); return
 
-    query   = name.strip().lower()
-    results = [p for p in players_data if query in p.get("name", "").lower()]
-
+    results = [p for p in data if name.strip().lower() in p.get("name","").lower()][:15]
     if not results:
-        await interaction.followup.send(embed=error_embed(f"❌ لم يُعثر على لاعب يحتوي اسمه على **\"{name}\"**."))
-        return
+        await interaction.followup.send(embed=error_embed(f"❌ لم يُعثر على **\"{name}\"**.")); return
 
-    results = results[:15]
     lines = ""
     for p in results:
-        pid   = str(p.get("id","?")).ljust(4)
-        pname = p.get("name","Unknown")
-        ping  = p.get("ping","?")
-        lines += f"[{pid}] {pname}  (ping: {ping}ms)\n"
+        lines += f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}  (ping: {p.get('ping','?')}ms)\n"
 
-    embed = discord.Embed(title="FiveM Bot", description=f"**نتائج البحث عن: \"{name}\"**", color=COLOR_SUCCESS)
+    embed = discord.Embed(
+        title="FiveM Bot",
+        description=f"**نتائج البحث عن: \"{name}\"** — {len(results)} لاعب",
+        color=COLOR_SUCCESS
+    )
     embed.set_author(name="Name Search")
     embed.set_thumbnail(url=FIVEM_THUMBNAIL)
     embed.add_field(name="Results", value=f"```gml\n{lines}```", inline=False)
     embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
     await interaction.followup.send(embed=embed)
 
+# ============================================================
+#  /stats
+# ============================================================
 @bot.tree.command(name="stats", description="إحصائيات السيرفر العامة")
 async def cmd_stats(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
-    players_data, info_data = await asyncio.gather(fetch_players(), fetch_info())
+    data, info = await asyncio.gather(fetch_players(), fetch_info())
 
-    if players_data is None:
-        await interaction.followup.send(embed=error_embed("❌ السيرفر غير متاح حالياً للاتصال."))
-        return
+    if data is None:
+        await interaction.followup.send(embed=error_embed("❌ السيرفر غير متاح.")); return
 
-    total_players = len(players_data)
+    total       = len(data)
     max_players = "?"
-    server_name = "Unknown Server"
-    
-    if info_data and isinstance(info_data, dict):
-        server_vars = info_data.get("vars", {})
-        max_players = server_vars.get("sv_maxClients", "?")
-        server_name = info_data.get("name", server_vars.get("sv_hostname", "Unknown Server"))
+    server_name = "Unknown"
 
-    avg_ping = 0
-    if total_players:
-        pings    = [p.get("ping", 0) for p in players_data if isinstance(p.get("ping"), int)]
-        avg_ping = round(sum(pings) / len(pings)) if pings else 0
+    if info and isinstance(info, dict):
+        v = info.get("vars", {})
+        max_players = v.get("sv_maxClients", "?")
+        server_name = info.get("name", v.get("sv_hostname", "Unknown"))
 
-    embed = discord.Embed(title="FiveM Bot", description="**Server Statistics**", color=COLOR_DEFAULT)
+    pings    = [p.get("ping", 0) for p in data if isinstance(p.get("ping"), int)]
+    avg_ping = round(sum(pings) / len(pings)) if pings else 0
+
+    status_bar = ""
+    try:
+        filled     = int((total / int(max_players)) * 10)
+        status_bar = "🟩" * filled + "⬛" * (10 - filled)
+    except:
+        pass
+
+    embed = discord.Embed(title="FiveM Bot", description="**إحصائيات السيرفر**", color=COLOR_DEFAULT)
     embed.set_author(name="Server Stats")
     embed.set_thumbnail(url=FIVEM_THUMBNAIL)
-    embed.add_field(name="🖥️ Server Name", value=f"`{server_name}`",                  inline=False)
-    embed.add_field(name="👥 Players",     value=f"`{total_players} / {max_players}`", inline=True)
-    embed.add_field(name="📶 Avg Ping",    value=f"`{avg_ping} ms`",                   inline=True)
-    embed.add_field(name="🌐 Address",     value=f"`{SERVER_IP}:{SERVER_PORT}`",        inline=True)
+    embed.add_field(name="🖥️ اسم السيرفر",    value=f"`{server_name}`",               inline=False)
+    embed.add_field(name="👥 اللاعبون",        value=f"`{total} / {max_players}`",      inline=True)
+    embed.add_field(name="📶 متوسط البينج",    value=f"`{avg_ping} ms`",               inline=True)
+    embed.add_field(name="🌐 العنوان",          value=f"`{SERVER_IP}:{SERVER_PORT}`",    inline=True)
+    if status_bar:
+        embed.add_field(name="📊 امتلاء السيرفر", value=status_bar, inline=False)
     embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
     await interaction.followup.send(embed=embed)
 
 # ============================================================
-#  التشغيل الأساسي (تأكد من وضع توكن البوت الجديد هنا)
+#  /help
+# ============================================================
+@bot.tree.command(name="help", description="عرض جميع الأوامر المتاحة")
+async def cmd_help(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="FiveM Bot — الأوامر",
+        description=f"سيرفر: `{SERVER_IP}:{SERVER_PORT}`",
+        color=COLOR_DEFAULT
+    )
+    embed.set_thumbnail(url=FIVEM_THUMBNAIL)
+    cmds = [
+        ("/players",        "قائمة كل اللاعبين المتصلين مع أزرار للتنقل"),
+        ("/id [server_id]", "معلومات لاعب عن طريق الـ ID"),
+        ("/search [name]",  "البحث عن لاعب بالاسم أو جزء منه"),
+        ("/stats",          "إحصائيات السيرفر العامة"),
+        ("/help",           "عرض هذه القائمة"),
+    ]
+    for cmd, desc in cmds:
+        embed.add_field(name=f"`{cmd}`", value=desc, inline=False)
+    embed.set_footer(text="BY ABO 5LOOD & SL6E")
+    await interaction.response.send_message(embed=embed)
+
+# ============================================================
+#  التشغيل
 # ============================================================
 TOKEN = os.environ.get("DISCORD_TOKEN")
 if TOKEN:
     bot.run(TOKEN)
 else:
-    print("❌ خطأ: DISCORD_TOKEN غير موجود في متغيرات البيئة!")
+    print("❌ DISCORD_TOKEN غير موجود!")
