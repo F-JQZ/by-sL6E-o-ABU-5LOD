@@ -61,7 +61,7 @@ def error_embed(message):
     return embed
 
 # ============================================================
-#  جلب البيانات — ✅ مصلح (كان 1500 والصح 200)
+#  جلب البيانات
 # ============================================================
 async def fetch_players():
     headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
@@ -69,7 +69,7 @@ async def fetch_players():
     async with aiohttp.ClientSession(timeout=timeout) as session:
         try:
             async with session.get(BASE_URL, headers=headers) as r:
-                if r.status == 600:
+                if r.status == 200:  # ✅ مصلح (كانت 600)
                     return await r.json(content_type=None)
                 else:
                     print(f"❌ HTTP Status: {r.status}")
@@ -313,11 +313,11 @@ async def cmd_stats(interaction: discord.Interaction):
     embed = discord.Embed(title="TRG Bot", description="**إحصائيات السيرفر**", color=COLOR_DEFAULT)
     embed.set_author(name="Server Stats")
     embed.set_thumbnail(url=FIVEM_THUMBNAIL)
-    embed.add_field(name="🖥️ اسم السيرفر",     value=f"`{server_name}`",            inline=False)
-    embed.add_field(name="👥 اللاعبون",         value=f"`{total} / {max_players}`",  inline=True)
-    embed.add_field(name="📶 متوسط البينج",     value=f"`{avg_ping} ms`",            inline=True)
-    embed.add_field(name="🌐 العنوان",           value=f"`{SERVER_IP}:{SERVER_PORT}`", inline=True)
-    embed.add_field(name="📊 امتلاء السيرفر",   value=status_bar,                    inline=False)
+    embed.add_field(name="🖥️ اسم السيرفر",   value=f"`{server_name}`",            inline=False)
+    embed.add_field(name="👥 اللاعبون",       value=f"`{total} / {max_players}`",  inline=True)
+    embed.add_field(name="📶 متوسط البينج",   value=f"`{avg_ping} ms`",            inline=True)
+    embed.add_field(name="🌐 العنوان",         value=f"`{SERVER_IP}:{SERVER_PORT}`", inline=True)
+    embed.add_field(name="📊 امتلاء السيرفر", value=status_bar,                    inline=False)
     embed.set_footer(text=f"TRG | {SERVER_IP}:{SERVER_PORT}")
     await interaction.followup.send(embed=embed)
 
