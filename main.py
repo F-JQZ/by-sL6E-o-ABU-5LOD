@@ -179,7 +179,7 @@ class PanelView(discord.ui.View):
             chunk = data[:25]
             lines = "".join(f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}\n" for p in chunk)
             embed.add_field(name=f"أول {len(chunk)} لاعب", value=f"```gml\n{lines}```", inline=False)
-            embed.set_footer(text=f"⚡ {total-25} إضافي" if total > 25 else f"Server: {SERVER_IP}:{SERVER_PORT}")
+            embed.set_footer(text=f"⚡ {total-200} إضافي" if total > 200 else f"Server: {SERVER_IP}:{SERVER_PORT}")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     @discord.ui.button(label="📊 إحصائيات", style=discord.ButtonStyle.primary, row=0)
@@ -246,7 +246,7 @@ bot = FiveMBot()
 @bot.event
 async def on_ready():
     await bot.change_presence(
-        activity=discord.Activity(type=discord.ActivityType.watching, name="BY SL6E & ABO 5LOOD")
+        activity=discord.Activity(type=discord.ActivityType.Streaming, name="BY SL6E & ABO 5LOOD")
     )
     print(f"✅ {bot.user.name}  |  {SERVER_IP}:{SERVER_PORT}")
 
