@@ -8,7 +8,7 @@ import math
 import asyncio
 
 # ============================================================
-#  إعدادات السيرفر الثابتة (الآيبي حقك فقط بدون تغيير)
+#  إعدادات السيرفر الثابتة (بناءً على طلبك)
 # ============================================================
 SERVER_IP   = "194.45.197.143"
 SERVER_PORT = "30120"
@@ -18,14 +18,14 @@ BASE_URL        = f"http://{SERVER_IP}:{SERVER_PORT}/players.json"
 INFO_URL        = f"http://{SERVER_IP}:{SERVER_PORT}/info.json"
 FIVEM_THUMBNAIL = "https://i.imgur.com/F4LkFHJ.png"
 PLAYERS_PER_PAGE = 20
-TIMEOUT_SEC      = 6  # وقت كافي لجلب بيانات الـ 1500 لاعب كاملة
+TIMEOUT_SEC      = 5
 
 COLOR_DEFAULT = 0x5865F2
 COLOR_ERROR   = 0xED4245
 COLOR_SUCCESS = 0x57F287
 
 # ============================================================
-#  مساعدات التنسيق
+#  مساعدات التنسيق واقتطاع المعرفات
 # ============================================================
 def extract_identifier(identifiers: list, prefix: str):
     for ident in identifiers:
@@ -62,22 +62,12 @@ def error_embed(message: str) -> discord.Embed:
     return embed
 
 # ============================================================
-#  تخطي الحماية المتقدمة (محاكاة بصمة متصفح كاملة)
+#  جلب البيانات من السيرفر
 # ============================================================
 async def fetch_players():
-    # هيدرز ومحاكاة متقدمة جداً تجبر الاستضافة على فك الحظر وظن أن البوت متصفح حقيقي
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
-        "Accept-Encoding": "gzip, deflate",
-        "Connection": "keep-alive",
-        "Sec-Ch-Ua": '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "cross-site"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json"
     }
     timeout = aiohttp.ClientTimeout(total=TIMEOUT_SEC)
     async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -85,26 +75,14 @@ async def fetch_players():
             async with session.get(BASE_URL, headers=headers) as r:
                 if r.status == 200:
                     return await r.json(content_type=None)
-                
-                # حل بديل ذكي: إذا الاستضافة مسوية Reverse Proxy على المنفذ العادي
-                elif r.status in [403, 404, 502]:
-                    alt_url = f"http://{SERVER_IP}/players.json"
-                    async with session.get(alt_url, headers=headers) as alt_r:
-                        if alt_r.status == 200:
-                            return await alt_r.json(content_type=None)
         except Exception as e:
             print(f"❌ fetch_players error: {e}")
     return None
 
 async def fetch_info():
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
-        "Accept-Encoding": "gzip, deflate",
-        "Connection": "keep-alive",
-        "Sec-Ch-Ua": '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
-        "Sec-Ch-Ua-Platform": '"Windows"'
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json"
     }
     timeout = aiohttp.ClientTimeout(total=TIMEOUT_SEC)
     async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -112,17 +90,12 @@ async def fetch_info():
             async with session.get(INFO_URL, headers=headers) as r:
                 if r.status == 200:
                     return await r.json(content_type=None)
-                elif r.status in [403, 404, 502]:
-                    alt_url = f"http://{SERVER_IP}/info.json"
-                    async with session.get(alt_url, headers=headers) as alt_r:
-                        if alt_r.status == 200:
-                            return await alt_r.json(content_type=None)
         except Exception as e:
             print(f"❌ fetch_info error: {e}")
     return None
 
 # ============================================================
-#  بناء embed الصفحة
+#  بناء قائمة اللاعبين والتنقل
 # ============================================================
 def build_players_embed(players_data: list, page: int, total_pages: int) -> discord.Embed:
     total_players = len(players_data)
@@ -152,9 +125,6 @@ def build_players_embed(players_data: list, page: int, total_pages: int) -> disc
     embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
     return embed
 
-# ============================================================
-#  أزرار التنقل بين الصفحات
-# ============================================================
 class PlayersView(discord.ui.View):
     def __init__(self, players_data: list, page: int, total_pages: int, requester_id: int):
         super().__init__(timeout=120)
@@ -173,9 +143,7 @@ class PlayersView(discord.ui.View):
 
     async def _check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.requester_id:
-            await interaction.response.send_message(
-                "❌ هذه الأزرار للشخص اللي استخدم الأمر فقط.", ephemeral=True
-            )
+            await interaction.response.send_message("❌ هذه الأزرار للشخص اللي استخدم الأمر فقط.", ephemeral=True)
             return False
         return True
 
@@ -214,7 +182,7 @@ class PlayersView(discord.ui.View):
             item.disabled = True
 
 # ============================================================
-#  إعداد البوت
+#  تشغيل وتهيئة البوت الجديد
 # ============================================================
 class FiveMBot(commands.Bot):
     def __init__(self):
@@ -227,7 +195,7 @@ class FiveMBot(commands.Bot):
         guild = discord.Object(id=GUILD_ID)
         self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
-        print("✅ تم مزامنة الأوامر بنجاح.")
+        print("✅ تم مزامنة الأوامر بنجاح للبوت الجديد.")
 
 bot = FiveMBot()
 
@@ -236,14 +204,13 @@ async def on_ready():
     await bot.change_presence(
         activity=discord.Activity(
             type=discord.ActivityType.watching,
-            name="BY SL6E & ABO 5LOOD"
+            name="BY ABO 5LOOD & SL6E"
         )
     )
-    print(f"✅ البوت شغال الآن: {bot.user.name}  |  {SERVER_IP}:{SERVER_PORT}")
-
+    print(f"✅ البوت الجديد شغال الآن باسم: {bot.user.name}")
 
 # ============================================================
-#  الأوامر الحية
+#  الأوامر الحية (/players , /id , /search , /stats)
 # ============================================================
 @bot.tree.command(name="players", description="عرض قائمة اللاعبين مع أزرار التنقل")
 async def cmd_players(interaction: discord.Interaction):
@@ -251,9 +218,7 @@ async def cmd_players(interaction: discord.Interaction):
     players_data = await fetch_players()
 
     if players_data is None:
-        await interaction.followup.send(embed=error_embed(
-            "❌ **فشل في الاتصال بالسيرفر**\nالاستضافة تمنع طلبات البوت المباشرة لحماية السيرفر الـ 1500."
-        ))
+        await interaction.followup.send(embed=error_embed("❌ فشل في الاتصال بالسيرفر. تأكد من عمل السيرفر والآيبي الصحيح."))
         return
 
     total_players = len(players_data)
@@ -265,7 +230,6 @@ async def cmd_players(interaction: discord.Interaction):
     embed = build_players_embed(players_data, 1, total_pages)
     view  = PlayersView(players_data, 1, total_pages, interaction.user.id)
     await interaction.followup.send(embed=embed, view=view)
-
 
 @bot.tree.command(name="id", description="البحث عن لاعب داخل السيرفر عبر الـ Server ID")
 @app_commands.describe(server_id="الـ ID الخاص باللاعب داخل السيرفر")
@@ -307,7 +271,6 @@ async def cmd_id(interaction: discord.Interaction, server_id: int):
     embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
     await interaction.followup.send(embed=embed)
 
-
 @bot.tree.command(name="search", description="البحث عن لاعب بالاسم")
 @app_commands.describe(name="اسم اللاعب أو جزء منه")
 async def cmd_search(interaction: discord.Interaction, name: str):
@@ -343,7 +306,6 @@ async def cmd_search(interaction: discord.Interaction, name: str):
     embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
     await interaction.followup.send(embed=embed)
 
-
 @bot.tree.command(name="stats", description="إحصائيات السيرفر العامة")
 async def cmd_stats(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
@@ -377,9 +339,8 @@ async def cmd_stats(interaction: discord.Interaction):
     embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
     await interaction.followup.send(embed=embed)
 
-
 # ============================================================
-#  تشغيل البوت
+#  التشغيل الأساسي (تأكد من وضع توكن البوت الجديد هنا)
 # ============================================================
 TOKEN = os.environ.get("DISCORD_TOKEN")
 if TOKEN:
