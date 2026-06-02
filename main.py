@@ -358,15 +358,15 @@ class PanelView(discord.ui.View):
         embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    @discord.ui.button(label="🔍 بحث بـ ID", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="🔍 بحث بـ ID", style=discord.ButtonStyle.primary, row=1)
     async def btn_search_id(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(SearchIDModal())
 
-    @discord.ui.button(label="🔎 بحث بالاسم", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="🔎 بحث بالاسم", style=discord.ButtonStyle.primary, row=1)
     async def btn_search_name(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(SearchNameModal())
 
-    @discord.ui.button(label="ℹ️ مساعدة", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="ℹ️ مساعدة", style=discord.ButtonStyle.primary, row=1)
     async def btn_info(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title="SL6E BOT — دليل الاستخدام", color=COLOR_DEFAULT)
         embed.add_field(
@@ -425,21 +425,28 @@ bot = FiveMBot()
 @bot.event
 async def on_ready():
     await bot.change_presence(
-        activity=discord.Activity(type=discord.ActivityType.watching, name="BY SL6E & ABO 5LOOD")
+        activity=discord.Streaming(
+            name="BY SL6E & ABO 5LOOD",
+            url="https://www.twitch.tv/placeholder"
+        )
     )
     print(f"✅ {bot.user.name}  |  {SERVER_IP}:{SERVER_PORT}")
 
+
+async def _auto_delete(interaction: discord.Interaction, delay: int = 900):
+    await asyncio.sleep(delay)
+    try:
+        await interaction.delete_original_response()
+    except Exception:
+        pass
 
 # ============================================================
 #  /لوحة
 # ============================================================
 @bot.tree.command(name="لوحة", description="🎮 لوحة تحكم السيرفر الكاملة")
 async def cmd_panel(interaction: discord.Interaction):
-    await interaction.response.send_message(
-        embed=panel_embed(),
-        view=PanelView(),
-        ephemeral=True,
-    )
+    await interaction.response.send_message(embed=panel_embed(), view=PanelView(), ephemeral=True)
+    asyncio.create_task(_auto_delete(interaction, delay=900))
 
 
 # ============================================================
