@@ -16,17 +16,18 @@ LOGO_FILE   = "logo.webp"
 BASE_URL = f"http://{SERVER_IP}:{SERVER_PORT}/players.json"
 INFO_URL = f"http://{SERVER_IP}:{SERVER_PORT}/info.json"
 
-# ⚡ مخفضة: الحد الكلي 5 ثواني بدل 30+
 FETCH_TIMEOUT = 5
 COLOR_DEFAULT = 0x1DA1F2
 COLOR_ERROR   = 0xED4245
 COLOR_SUCCESS = 0x57F287
 
+BANNER_URL = "https://media.discordapp.net/attachments/1275695804945793035/1511292593605181471/5dc9d6a7d1853123e5ec5c3017944906.webp?ex=6a1fec68&is=6a1e9ae8&hm=365d169c6b6b382335ab6a2638b066aadc53c357be5fce5e5bf1c0f25e1f80da&=&format=webp"
+
 # ============================================================
-#  كاش بسيط — يمنع الضغط المتكرر على السيرفر
+#  كاش
 # ============================================================
 _cache: dict = {}
-CACHE_TTL = 8  # ثواني
+CACHE_TTL = 8
 
 def _get_cache(key: str):
     entry = _cache.get(key)
@@ -73,26 +74,17 @@ def error_embed(msg: str) -> discord.Embed:
     e.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
     return e
 
-def get_logo() -> discord.File | None:
-    if os.path.exists(LOGO_FILE):
-        return discord.File(LOGO_FILE, filename="logo.webp")
-    return None
-
 def panel_embed() -> discord.Embed:
     embed = discord.Embed(
         title="🎮  SL6E BOT — لوحة التحكم",
-        description=(
-            "مرحباً! استخدم الأزرار أدناه للوصول لمعلومات السيرفر.\n"
-            f"```\n🌐  {SERVER_IP}:{SERVER_PORT}\n```"
-        ),
-        color=0x1B6FE4   # ← أزرق غامق مميز
+        color=0x1B6FE4
     )
-    embed.set_image(url="attachment://logo.webp")
+    embed.set_image(url=BANNER_URL)
     embed.set_footer(text="SL6E BOT  •  لوحة التحكم")
     return embed
 
 # ============================================================
-#  جلب البيانات — مع timeout صارم وكاش
+#  جلب البيانات
 # ============================================================
 _HEADERS = {
     "User-Agent": (
@@ -443,13 +435,11 @@ async def on_ready():
 # ============================================================
 @bot.tree.command(name="لوحة", description="🎮 لوحة تحكم السيرفر الكاملة")
 async def cmd_panel(interaction: discord.Interaction):
-    embed = panel_embed()
-    logo  = get_logo()
-    if logo:
-        await interaction.response.send_message(embed=embed, view=PanelView(), file=logo, ephemeral=True)
-    else:
-        embed.description += "\n\n*(لم يُعثر على ملف الشعار — ضع logo.webp https://media.discordapp.net/attachments/1275695804945793035/1511292593605181471/5dc9d6a7d1853123e5ec5c3017944906.webp?ex=6a1fec68&is=6a1e9ae8&hm=365d169c6b6b382335ab6a2638b066aadc53c357be5fce5e5bf1c0f25e1f80da&=&format=webp بجانب main.py)*"
-        await interaction.response.send_message(embed=embed, view=PanelView(), ephemeral=True)
+    await interaction.response.send_message(
+        embed=panel_embed(),
+        view=PanelView(),
+        ephemeral=True,
+    )
 
 
 # ============================================================
