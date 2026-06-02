@@ -448,7 +448,7 @@ async def cmd_panel(interaction: discord.Interaction):
     if logo:
         await interaction.response.send_message(embed=embed, view=PanelView(), file=logo, ephemeral=True)
     else:
-        embed.description += "\n\n*(لم يُعثر على ملف الشعار — ضع logo.webp بجانب main.py)*"
+        embed.description += "\n\n*(لم يُعثر على ملف الشعار — ضع logo.webp https://media.discordapp.net/attachments/1275695804945793035/1511292593605181471/5dc9d6a7d1853123e5ec5c3017944906.webp?ex=6a1fec68&is=6a1e9ae8&hm=365d169c6b6b382335ab6a2638b066aadc53c357be5fce5e5bf1c0f25e1f80da&=&format=webp بجانب main.py)*"
         await interaction.response.send_message(embed=embed, view=PanelView(), ephemeral=True)
 
 
