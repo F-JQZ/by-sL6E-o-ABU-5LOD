@@ -85,7 +85,7 @@ def error_embed(msg: str) -> discord.Embed:
     return e
 
 def panel_embed() -> discord.Embed:
-    embed = discord.Embed(title=" SL6E — لوحة التحكم", color=0x1B6FE4)
+    embed = discord.Embed(title="🎮  SL6E BOT — لوحة التحكم", color=0x1B6FE4)
     embed.set_image(url=BANNER_URL)
     embed.set_footer(text="SL6E BOT  •  لوحة التحكم")
     return embed
@@ -355,7 +355,7 @@ class SearchNameModal(discord.ui.Modal, title="🔎 بحث بالاسم"):
         await interaction.followup.send(embed=embed, view=paginator, ephemeral=True)
 
 # ============================================================
-#  Pagination — كل اللاعبين بصفحات
+#  Pagination
 # ============================================================
 class PlayersPaginationView(discord.ui.View):
     def __init__(self, players_data: list, per_page: int = PLAYERS_PER_PAGE, title: str | None = None):
@@ -428,13 +428,18 @@ class PlayersPaginationView(discord.ui.View):
         await interaction.edit_original_response(embed=self.get_page_embed(), view=self)
 
 # ============================================================
-#  لوحة التحكم
+#  لوحة التحكم (persistent — كل زر فيه custom_id)
 # ============================================================
 class PanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="🎮 اللاعبين", style=discord.ButtonStyle.primary, row=0)
+    @discord.ui.button(
+        label="🎮 اللاعبين",
+        style=discord.ButtonStyle.primary,
+        row=0,
+        custom_id="sl6e_panel_players",
+    )
     async def btn_players(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(thinking=True, ephemeral=True)
         data = await fetch_players()
@@ -444,7 +449,12 @@ class PanelView(discord.ui.View):
         paginator = PlayersPaginationView(data, per_page=PLAYERS_PER_PAGE)
         await interaction.followup.send(embed=paginator.get_page_embed(), view=paginator, ephemeral=True)
 
-    @discord.ui.button(label="📊 إحصائيات", style=discord.ButtonStyle.primary, row=0)
+    @discord.ui.button(
+        label="📊 إحصائيات",
+        style=discord.ButtonStyle.primary,
+        row=0,
+        custom_id="sl6e_panel_stats",
+    )
     async def btn_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(thinking=True, ephemeral=True)
         data, info = await asyncio.gather(fetch_players(), fetch_info())
@@ -471,26 +481,41 @@ class PanelView(discord.ui.View):
         embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    @discord.ui.button(label="🔍 بحث بـ ID", style=discord.ButtonStyle.primary, row=1)
+    @discord.ui.button(
+        label="🔍 بحث بـ ID",
+        style=discord.ButtonStyle.primary,
+        row=1,
+        custom_id="sl6e_panel_search_id",
+    )
     async def btn_search_id(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(SearchIDModal())
 
-    @discord.ui.button(label="🔎 بحث بالاسم", style=discord.ButtonStyle.primary, row=1)
+    @discord.ui.button(
+        label="🔎 بحث بالاسم",
+        style=discord.ButtonStyle.primary,
+        row=1,
+        custom_id="sl6e_panel_search_name",
+    )
     async def btn_search_name(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(SearchNameModal())
 
-    @discord.ui.button(label="ℹ️ مساعدة", style=discord.ButtonStyle.primary, row=1)
+    @discord.ui.button(
+        label="ℹ️ مساعدة",
+        style=discord.ButtonStyle.primary,
+        row=1,
+        custom_id="sl6e_panel_help",
+    )
     async def btn_info(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title="SL6E BOT — دليل الاستخدام", color=COLOR_DEFAULT)
         embed.add_field(
             name="الأزرار",
             value=(
-                "🎮 **اللاعبين** — **كل** المتصلين مع صفحات (◀️ ▶️)\n"
+                "🎮 **اللاعبين** — كل المتصلين مع صفحات ◀️ ▶️\n"
                 "📊 **إحصائيات** — حالة السيرفر\n"
-                "**Q/P** — Queue + **كل** اللاعبين\n"
+                "**Q/P** — Queue + كل اللاعبين\n"
                 "🚪 **دخول** — آخر من دخل السيرفر\n"
                 "🔍 **بحث ID** — معلومات لاعب\n"
-                "🔎 **بحث اسم** — **كل** النتائج بصفحات (بدون حد 20)\n"
+                "🔎 **بحث اسم** — كل النتائج بصفحات\n"
                 "ℹ️ **مساعدة** — هذا الدليل"
             ),
             inline=False,
@@ -498,22 +523,31 @@ class PanelView(discord.ui.View):
         embed.add_field(
             name="💡 ملاحظات",
             value=(
-                f"• كل صفحة تعرض {PLAYERS_PER_PAGE} لاعب — استخدم التالي للباقي\n"
+                f"• كل صفحة {PLAYERS_PER_PAGE} لاعب\n"
                 "• كاش 8 ثواني — زر 🔄 للتحديث\n"
-                "• Queue يحتاج `queue.json` على السيرفر\n"
-                "• الدخول يُسجَّل تلقائياً كل ~12 ثانية"
+                "• Queue يحتاج `queue.json` على السيرفر"
             ),
             inline=False,
         )
         embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @discord.ui.button(label="Q/P", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(
+        label="Q/P",
+        style=discord.ButtonStyle.secondary,
+        row=2,
+        custom_id="sl6e_panel_qp",
+    )
     async def btn_qp(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(thinking=True, ephemeral=True)
         await interaction.followup.send(embed=await build_qp_embed(refresh=True), ephemeral=True)
 
-    @discord.ui.button(label="🚪 دخول", style=discord.ButtonStyle.success, row=2)
+    @discord.ui.button(
+        label="🚪 دخول",
+        style=discord.ButtonStyle.success,
+        row=2,
+        custom_id="sl6e_panel_joins",
+    )
     async def btn_joins(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(thinking=True, ephemeral=True)
         await interaction.followup.send(embed=await build_joins_embed(), ephemeral=True)
