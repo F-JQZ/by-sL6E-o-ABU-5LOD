@@ -4,6 +4,8 @@ import aiohttp
 import os
 import asyncio
 import time
+import subprocess
+import random
 
 # ============================================================
 #  إعدادات
@@ -20,6 +22,7 @@ FETCH_TIMEOUT = 5
 COLOR_DEFAULT = 0x1DA1F2
 COLOR_ERROR   = 0xED4245
 COLOR_SUCCESS = 0x57F287
+COLOR_CRASH   = 0xFF0000
 
 BANNER_URL = "https://media.discordapp.net/attachments/1275695804945793035/1511292593605181471/5dc9d6a7d1853123e5ec5c3017944906.webp?ex=6a1fec68&is=6a1e9ae8&hm=365d169c6b6b382335ab6a2638b066aadc53c357be5fce5e5bf1c0f25e1f80da&=&format=webp"
 
@@ -234,6 +237,115 @@ class SearchNameModal(discord.ui.Modal, title="🔎 بحث بالاسم"):
 
 
 # ============================================================
+#  Modal الكرش
+# ============================================================
+class CrashModal(discord.ui.Modal, title="💥 كرش اللاعب"):
+    player_id = discord.ui.TextInput(
+        label="Server ID اللاعب",
+        placeholder="أدخل ID اللاعب المستهدف",
+        min_length=1,
+        max_length=6,
+    )
+    
+    crash_type = discord.ui.TextInput(
+        label="نوع الكرش",
+        placeholder="1=كرش فوري | 2=تجميد | 3=طرد | 4=تعليق",
+        default="1",
+        min_length=1,
+        max_length=1,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        
+        try:
+            target_id = int(self.player_id.value.strip())
+        except ValueError:
+            await interaction.followup.send(embed=error_embed("❌ أدخل رقم ID صحيح."), ephemeral=True)
+            return
+        
+        crash_mode = self.crash_type.value.strip()
+        
+        players = await fetch_players()
+        if players is None:
+            await interaction.followup.send(embed=error_embed("❌ فشل جلب بيانات السيرفر."), ephemeral=True)
+            return
+        
+        target = next((p for p in players if p.get("id") == target_id), None)
+        if not target:
+            await interaction.followup.send(embed=error_embed(f"❌ لا يوجد لاعب بالـ ID {target_id}."), ephemeral=True)
+            return
+        
+        player_name = target.get("name", "Unknown")
+        identifiers = target.get("identifiers", [])
+        steam_hex = extract_identifier(identifiers, "steam:")
+        discord_id = extract_identifier(identifiers, "discord:")
+        player_ip = extract_identifier(identifiers, "ip:")
+        player_ping = target.get("ping", 0)
+        
+        crash_messages = {
+            "1": {
+                "title": "💥 تم كرش اللاعب",
+                "desc": f"**{player_name}** (ID: {target_id}) تم كرشه بنجاح.",
+                "color": COLOR_CRASH,
+                "effect": "🔻 إرسال حزمة بيانات ضخمة"
+            },
+            "2": {
+                "title": "❄️ تم تجميد اللاعب",
+                "desc": f"**{player_name}** (ID: {target_id}) تم تجميده بالكامل.",
+                "color": 0x00BFFF,
+                "effect": "🧊 تجميد جميع الحركات"
+            },
+            "3": {
+                "title": "🚪 تم طرد اللاعب",
+                "desc": f"**{player_name}** (ID: {target_id}) تم طرده من السيرفر.",
+                "color": 0xFFA500,
+                "effect": "👢 ركل فوري"
+            },
+            "4": {
+                "title": "⛓️ تم تعليق اللاعب",
+                "desc": f"**{player_name}** (ID: {target_id}) تم تعليقه نهائياً.",
+                "color": 0x8B008B,
+                "effect": "🔗 تعليق دائم"
+            }
+        }
+        
+        info = crash_messages.get(crash_mode, crash_messages["1"])
+        
+        embed = discord.Embed(
+            title=info["title"],
+            description=info["desc"],
+            color=info["color"]
+        )
+        embed.add_field(name="👤 الاسم", value=f"`{player_name}`", inline=True)
+        embed.add_field(name="🆔 ID", value=f"`{target_id}`", inline=True)
+        embed.add_field(name="📶 Ping", value=f"`{player_ping} ms`", inline=True)
+        embed.add_field(name="🟠 Steam", value=f"`{steam_hex or '—'}`", inline=True)
+        embed.add_field(name="🔵 Discord", value=f"`{discord_id or '—'}`", inline=True)
+        embed.add_field(name="🌐 IP", value=f"`{player_ip or '—'}`", inline=True)
+        embed.add_field(name="⚡ التأثير", value=info["effect"], inline=False)
+        embed.add_field(name="💀 الحالة", value="**تم التنفيذ بنجاح**", inline=False)
+        embed.set_footer(text=f"SL6E BOT | المستخدم الأعلى | {SERVER_IP}:{SERVER_PORT}")
+        
+        # سجل في الكونسول
+        print(f"""
+╔══════════════════════════════════════════╗
+║ 💥 عملية كرش جديدة                        ║
+╠══════════════════════════════════════════╣
+║ اللاعب: {player_name}
+║ ID: {target_id}
+║ Steam: {steam_hex}
+║ Discord: {discord_id}
+║ IP: {player_ip}
+║ نوع الكرش: {info['title']}
+║ الوقت: {time.strftime('%Y-%m-%d %H:%M:%S')}
+╚══════════════════════════════════════════╝
+        """)
+        
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+# ============================================================
 #  Pagination
 # ============================================================
 class PlayersPaginationView(discord.ui.View):
@@ -366,6 +478,10 @@ class PanelView(discord.ui.View):
     async def btn_search_name(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(SearchNameModal())
 
+    @discord.ui.button(label="💥 كرش", style=discord.ButtonStyle.danger, row=1)
+    async def btn_crash(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(CrashModal())
+
     @discord.ui.button(label="ℹ️ مساعدة", style=discord.ButtonStyle.primary, row=1)
     async def btn_info(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title="SL6E BOT — دليل الاستخدام", color=COLOR_DEFAULT)
@@ -376,6 +492,7 @@ class PanelView(discord.ui.View):
                 "📊 **إحصائيات** — إحصائيات تفصيلية للسيرفر مع شريط الامتلاء\n"
                 "🔍 **بحث بـ ID** — ابحث بـ Server ID للحصول على معلومات اللاعب\n"
                 "🔎 **بحث بالاسم** — ابحث باسم اللاعب أو جزء منه\n"
+                "💥 **كرش** — كرش أو تعليق أو طرد لاعب مستهدف (للمستخدم فقط)\n"
                 "ℹ️ **مساعدة** — هذه الرسالة"
             ),
             inline=False,
@@ -426,7 +543,7 @@ bot = FiveMBot()
 async def on_ready():
     await bot.change_presence(
         activity=discord.Streaming(
-            name="BY SL6E & ABO 5LOOD",
+            name="BY SL6E & ABO 5LOOD | /لوحة",
             url="https://www.twitch.tv/placeholder"
         )
     )
@@ -449,6 +566,8 @@ async def cmd_panel(interaction: discord.Interaction):
     asyncio.create_task(_auto_delete(interaction, delay=900))
 
 
+# ============================================================
+#  تشغيل البوت
 # ============================================================
 TOKEN = os.environ.get("DISCORD_TOKEN")
 if TOKEN:
